@@ -1,0 +1,42 @@
+cabal-version:  1.12
+name:           dhall-list
+version:        0.1.0.0
+description:    A data structure to support the Dhall List type
+homepage:       https://github.com/sjakobi/dhall-list#readme
+bug-reports:    https://github.com/sjakobi/dhall-list/issues
+author:         Simon Jakobi
+maintainer:     simon.jakobi@gmail.com
+copyright:      Copyright (c) 2019 Simon Jakobi
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/sjakobi/dhall-list
+
+library
+  exposed-modules:
+      DhallList
+      DhallList.Internal
+  hs-source-dirs:
+      src
+  build-depends:
+      base >=4.8 && <5
+    , vector
+  default-language: Haskell2010
+  ghc-options: -Wall -Wcompat
+
+test-suite dhall-list-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -Wcompat -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.8 && <5
+    , dhall-list
+  default-language: Haskell2010
