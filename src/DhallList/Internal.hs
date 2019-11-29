@@ -52,6 +52,16 @@ instance Monoid (DhallList a) where
 instance Functor DhallList where
   fmap = map
 
+instance Applicative DhallList where
+  pure = One
+
+  -- TODO: Optimize?
+  xs <*> ys = fromList (toList xs <*> toList ys)
+
+instance Monad DhallList where
+  -- TODO: Optimize?
+  xs >>= f = fromList (toList xs >>= toList . f)
+
 instance Foldable DhallList where
   foldMap = foldMap
   toList = toList
