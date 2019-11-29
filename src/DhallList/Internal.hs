@@ -42,7 +42,7 @@ import qualified Data.Vector
 data DhallList a
   = Empty
   | One a
-  | Many a (Inner a) a
+  | Many a !(Inner a) a
   deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
@@ -177,21 +177,21 @@ toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
   One a -> [a]
-  Many h xs l -> h : itoList (isnoc xs l)
+  Many h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
 
 data Inner a
   = IEmpty
   | IOne a -- TODO: Consider removing this constructor
-  | ICons !Int a (Inner a)
+  | ICons {-# unpack #-} !Int a !(Inner a)
     -- ^ Invariant: length >= 2
-  | ISnoc !Int (Inner a) a
+  | ISnoc {-# unpack #-} !Int !(Inner a) a
     -- ^ Invariant: length >= 2
-  | IVec (Vector a)
+  | IVec {-# unpack #-} !(Vector a)
     -- ^ Invariant: length >= 2
-  | IRev (Inner a)
+  | IRev !(Inner a)
     -- ^ Invariant: length >= 2
     --   Invariant: The inner Inner is not an IRev itself
-  | ICat !Int (Inner a) (Inner a)
+  | ICat {-# unpack #-} !Int !(Inner a) !(Inner a)
     -- ^ Invariant: both inner Inners have length >= 2
   deriving (Show, Data, Generic, NFData, Lift)
 
@@ -229,7 +229,7 @@ ireverse x0 = case x0 of
   IEmpty -> IEmpty
   IOne _ -> x0
   IRev xs -> xs
-  ICat s a b -> ICat s (ireverse b) (ireverse a)
+  ICat s a b -> ICat s (ireverse b) (ireverse a) -- FIXME: O(n)?!
   _      -> IRev x0
 
 itoList :: Inner a -> [a]
