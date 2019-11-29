@@ -229,7 +229,6 @@ ireverse x0 = case x0 of
   IEmpty -> IEmpty
   IOne _ -> x0
   IRev xs -> xs
-  ICat s a b -> ICat s (ireverse b) (ireverse a) -- FIXME: O(n)?!
   _      -> IRev x0
 
 itoList :: Inner a -> [a]
