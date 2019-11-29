@@ -177,7 +177,7 @@ toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
   One a -> [a]
-  Many h xs l -> h : itoList xs ++ [l] -- FIXME: Go via dlist
+  Many h xs l -> h : itoList (isnoc xs l)
 
 data Inner a
   = IEmpty
