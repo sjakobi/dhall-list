@@ -32,6 +32,14 @@ data DhallList a
   | One a
   | Many a (Inner a) a
 
+instance Eq a => Eq (DhallList a) where
+  -- TODO: Optimize
+  xs == ys = toList xs == toList ys
+
+instance Ord a => Ord (DhallList a) where
+  -- TODO: Optimize
+  compare xs ys = compare (toList xs) (toList ys)
+
 instance Semigroup (DhallList a) where
   (<>) = append
 
