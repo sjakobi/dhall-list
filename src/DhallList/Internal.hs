@@ -239,7 +239,10 @@ itraverseWithIndex f ix xs0 = ifromList <$> go (itoList xs0) ix
     go (x:xs) n = liftA2 (:) (f n x) (go xs $! n + 1)
 
 ifromList :: [a] -> Inner a
-ifromList = ifromVector . Data.Vector.fromList
+ifromList = \case
+  [] -> IEmpty
+  [x] -> IOne x
+  xs -> IVec (Data.Vector.fromList xs)
 
 ifromVector :: Vector a -> Inner a
 ifromVector v = case Data.Vector.length v of
