@@ -181,7 +181,7 @@ toList = \case
 
 data Inner a
   = IEmpty
-  | IOne a
+  | IOne a -- TODO: Consider removing this constructor
   | ICons !Int a (Inner a)
     -- ^ Invariant: length >= 2
   | ISnoc !Int (Inner a) a
