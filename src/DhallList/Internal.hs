@@ -20,9 +20,11 @@ module DhallList.Internal
   ) where
 
 import Control.Applicative (liftA2, liftA3)
+import Data.Coerce (Coercible, coerce)
 import Data.Functor.Identity (Identity(..))
+import Data.Monoid (Dual(..))
 import Data.Vector (Vector)
-import Prelude hiding (head, last, length, reverse, null, traverse, map)
+import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap)
 
 import qualified Data.Foldable
 import qualified Data.Traversable
@@ -51,6 +53,7 @@ instance Functor DhallList where
   fmap = map
 
 instance Foldable DhallList where
+  foldMap = foldMap
   toList = toList
   length = length
   null = null
@@ -121,6 +124,12 @@ last = \case
   Empty -> Nothing
   One x -> Just x
   Many _ _ x -> Just x
+
+foldMap :: Monoid m => (a -> m) -> DhallList a -> m
+foldMap f = \case
+  Empty -> mempty
+  One a -> f a
+  Many a xs b -> f a <> ifoldMap f xs <> f b
 
 -- TODO: Implement with Data.Vector.imap instead
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
@@ -221,6 +230,8 @@ ireverseToList = \case
   IRev xs -> itoList xs
   ICat _ xs ys -> ireverseToList ys ++ ireverseToList xs -- FIXME
 
+-- TODO: Actually Dhall just needs a mapMWithIndex_ that can be built on top of
+-- Data.Vector.imapM_
 itraverseWithIndex :: Applicative f => (Int -> a -> f b) -> Int -> Inner a -> f (Inner b)
 itraverseWithIndex f ix xs0 = ifromList <$> go (itoList xs0) ix
   where
@@ -235,3 +246,17 @@ ifromVector v = case Data.Vector.length v of
   0 -> IEmpty
   1 -> IOne (Data.Vector.head v)
   _ -> IVec v
+
+ifoldMap :: Monoid m => (a -> m) -> Inner a -> m
+ifoldMap f = \case
+  IEmpty -> mempty
+  IOne a -> f a
+  ICons _ a xs -> f a <> ifoldMap f xs
+  ISnoc _ xs a -> ifoldMap f xs <> f a
+  IVec v -> Data.Foldable.foldMap f v
+  IRev xs -> getDual (ifoldMap (Dual #. f) xs)
+  ICat _ xs ys -> ifoldMap f xs <> ifoldMap f ys
+
+(#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
+(#.) _f = coerce
+{-# INLINE (#.) #-}
