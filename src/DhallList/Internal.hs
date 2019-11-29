@@ -1,4 +1,8 @@
 {-# language BangPatterns #-}
+{-# language DeriveAnyClass #-}
+{-# language DeriveDataTypeable #-}
+{-# language DeriveLift #-}
+{-# language DeriveGeneric #-}
 {-# language LambdaCase #-}
 {-# language ViewPatterns #-}
 module DhallList.Internal
@@ -20,10 +24,15 @@ module DhallList.Internal
   ) where
 
 import Control.Applicative (liftA2, liftA3)
+import Control.DeepSeq (NFData)
 import Data.Coerce (Coercible, coerce)
+import Data.Data (Data)
 import Data.Functor.Identity (Identity(..))
 import Data.Monoid (Dual(..))
 import Data.Vector (Vector)
+import GHC.Generics (Generic)
+import Instances.TH.Lift ()
+import Language.Haskell.TH.Syntax (Lift)
 import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap)
 
 import qualified Data.Foldable
@@ -34,6 +43,7 @@ data DhallList a
   = Empty
   | One a
   | Many a (Inner a) a
+  deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
   -- TODO: Optimize
@@ -182,6 +192,7 @@ data Inner a
     --   Invariant: The inner Inner is not an IRev itself
   | ICat !Int (Inner a) (Inner a)
     -- ^ Invariant: both inner Inners have length >= 2
+  deriving (Show, Data, Generic, NFData, Lift)
 
 icons :: a -> Inner a -> Inner a
 icons x IEmpty = IOne x
