@@ -1,8 +1,8 @@
 {-# language BangPatterns #-}
 {-# language DeriveAnyClass #-}
 {-# language DeriveDataTypeable #-}
-{-# language DeriveLift #-}
 {-# language DeriveGeneric #-}
+{-# language DeriveLift #-}
 {-# language LambdaCase #-}
 {-# language ViewPatterns #-}
 module DhallList.Internal
@@ -72,6 +72,7 @@ instance Monad DhallList where
   -- TODO: Optimize?
   xs >>= f = fromList (toList xs >>= toList . f)
 
+-- TODO: Add foldr' (needed for Dhall.Eval)
 instance Foldable DhallList where
   foldMap = foldMap
   toList = toList
