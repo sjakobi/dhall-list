@@ -3,21 +3,28 @@
 {-# language ViewPatterns #-}
 module DhallList.Internal
   ( DhallList(..)
+  , empty
+  , singleton
+  , fromList
   , append
   , reverse
   , length
   , null
   , head
+  , last
+  , map
   , mapWithIndex
+  , traverse
   , traverseWithIndex
   ) where
 
 import Control.Applicative (liftA2, liftA3)
 import Data.Functor.Identity (Identity(..))
 import Data.Vector (Vector)
-import Prelude hiding (head, length, reverse, null)
+import Prelude hiding (head, last, length, reverse, null, traverse, map)
 
 import qualified Data.Foldable
+import qualified Data.Traversable
 import qualified Data.Vector
 
 data DhallList a
@@ -31,10 +38,33 @@ instance Semigroup (DhallList a) where
 instance Monoid (DhallList a) where
   mempty = Empty
 
+instance Functor DhallList where
+  fmap = map
+
 instance Foldable DhallList where
   toList = toList
   length = length
   null = null
+
+instance Traversable DhallList where
+  traverse = traverse
+
+empty :: DhallList a
+empty = Empty
+
+singleton :: a -> DhallList a
+singleton a = One a
+
+fromList :: [a] -> DhallList a
+fromList = \case
+  [] -> Empty
+  [a] -> One a
+  [a, b] -> Many a IEmpty b
+  a : as -> Many a (ifromVector v') b
+    where
+      v = Data.Vector.fromList as
+      v' = Data.Vector.init v
+      b = Data.Vector.last v
 
 append :: DhallList a -> DhallList a -> DhallList a
 Empty `append` y = y
@@ -67,8 +97,18 @@ head = \case
   One x -> Just x
   Many x _ _ -> Just x
 
+last :: DhallList a -> Maybe a
+last = \case
+  Empty -> Nothing
+  One x -> Just x
+  Many _ _ x -> Just x
+
+-- TODO: Implement with Data.Vector.imap instead
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
 mapWithIndex f = runIdentity . traverseWithIndex (\ix x -> Identity (f ix x))
+
+map :: (a -> b) -> DhallList a -> DhallList b
+map f = mapWithIndex (\_ix x -> f x)
 
 traverseWithIndex :: Applicative f => (Int -> a -> f b) -> DhallList a -> f (DhallList b)
 traverseWithIndex f = \case
@@ -80,6 +120,9 @@ traverseWithIndex f = \case
       (f 0 h)
       (itraverseWithIndex f 1 xs)
       (f (ilength xs + 1) l)
+
+traverse :: Applicative f => (a -> f b) -> DhallList a -> f (DhallList b)
+traverse f = traverseWithIndex (\_ix x -> f x)
 
 toList :: DhallList a -> [a]
 toList = \case
