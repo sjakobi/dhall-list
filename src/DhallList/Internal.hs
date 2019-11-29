@@ -6,6 +6,7 @@ module DhallList.Internal
   , empty
   , singleton
   , fromList
+  , fromVector
   , append
   , reverse
   , length
@@ -73,6 +74,16 @@ fromList = \case
       v = Data.Vector.fromList as
       v' = Data.Vector.init v
       b = Data.Vector.last v
+
+fromVector :: Vector a -> DhallList a
+fromVector v = case Data.Vector.length v of
+  0 -> Empty
+  1 -> One (Data.Vector.head v)
+  _ -> Many a (ifromVector v') b
+    where
+      a = Data.Vector.head v
+      b = Data.Vector.last v
+      v' = Data.Vector.init (Data.Vector.tail v)
 
 append :: DhallList a -> DhallList a -> DhallList a
 Empty `append` y = y
