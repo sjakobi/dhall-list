@@ -4,7 +4,6 @@
 {-# language DeriveGeneric #-}
 {-# language DeriveLift #-}
 {-# language LambdaCase #-}
-{-# language ViewPatterns #-}
 module DhallList.Internal
   ( DhallList(..)
   , empty
