@@ -47,6 +47,7 @@ data DhallList a
 
 instance Eq a => Eq (DhallList a) where
   -- TODO: Optimize
+  -- TODO: Define as @eqBy (==)@
   xs == ys = toList xs == toList ys
 
 instance Ord a => Ord (DhallList a) where
