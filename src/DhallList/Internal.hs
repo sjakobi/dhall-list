@@ -27,7 +27,7 @@ module DhallList.Internal
 
 -- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
 -- TODO: Use unsafe Vector operations
--- TODO: Optimize Inner operations based on size of Many
+-- TODO: Optimize Inner operations based on size of Mud
 -- TODO: Add a mapMWithIndex_ or mapM_withIndex that can be built on top of Data.Vector.imapM_
 
 import Control.Applicative (Alternative)
@@ -51,7 +51,7 @@ data DhallList a
   | One a -- TODO: Consider removing
   | Vec {-# unpack #-} !(Vector a)
     -- ^ Invariant: Non-empty
-  | Many {-# unpack #-} !Int a !(Inner a) a
+  | Mud {-# unpack #-} !Int a !(Inner a) a
   deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
@@ -132,42 +132,42 @@ append x0 = case x0 of
     Empty -> x0
     One y -> Vec (Data.Vector.fromListN 2 [x, y]) -- TODO: Check Core
     Vec vy ->
-      Many
+      Mud
         (Data.Vector.length vy + 1)
         x
         (ifromVector (Data.Vector.init vy))
         (Data.Vector.last vy)
-    Many sy hy ys ly -> Many (sy + 1) x (icons hy ys) ly
+    Mud sy hy ys ly -> Mud (sy + 1) x (icons hy ys) ly
   Vec vx -> \case
     Empty -> x0
     One y ->
-      Many
+      Mud
         (Data.Vector.length vx + 1)
         (Data.Vector.head vx)
         (ifromVector (Data.Vector.tail vx))
         y
     Vec vy ->
-      Many
+      Mud
         (Data.Vector.length vx + Data.Vector.length vy)
         (Data.Vector.head vx)
         (icatVecs (Data.Vector.tail vx) (Data.Vector.init vy))
         (Data.Vector.last vy)
-    Many sy hy ys ly ->
-      Many
+    Mud sy hy ys ly ->
+      Mud
         (Data.Vector.length vx + sy)
         (Data.Vector.head vx)
         (ICat (IVec (Data.Vector.tail vx)) (icons hy ys)) -- TODO: Maybe optimize using sy
         ly
-  Many sx hx xs lx -> \case
+  Mud sx hx xs lx -> \case
     Empty -> x0
-    One y -> Many (sx + 1) hx (isnoc xs lx) y
+    One y -> Mud (sx + 1) hx (isnoc xs lx) y
     Vec vy ->
-      Many
+      Mud
         (sx + Data.Vector.length vy)
         hx
         (ICat (isnoc xs lx) (IVec (Data.Vector.init vy)))
         (Data.Vector.last vy)
-    Many sy hy ys ly -> Many (sx + sy) hx (iglue xs lx hy ys) ly
+    Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inline append #-}
 
 reverse :: DhallList a -> DhallList a
@@ -177,19 +177,19 @@ reverse = \case
   Vec v -> case Data.Vector.length v of
     1 -> One (Data.Vector.head v)
     n ->
-      Many
+      Mud
         n
         (Data.Vector.last v)
         (ireverse (ifromVector (Data.Vector.init (Data.Vector.tail v))))
         (Data.Vector.head v)
-  Many s h xs l -> Many s l (ireverse xs) h
+  Mud s h xs l -> Mud s l (ireverse xs) h
 
 length :: DhallList a -> Int
 length = \case
   Empty -> 0
   One _ -> 1
   Vec v -> Data.Vector.length v
-  Many s _ _ _ -> s
+  Mud s _ _ _ -> s
 
 null :: DhallList a -> Bool
 null = \case
@@ -201,21 +201,21 @@ head = \case
   Empty -> Nothing
   One x -> Just x
   Vec v -> Just (Data.Vector.head v)
-  Many _ x _ _ -> Just x
+  Mud _ x _ _ -> Just x
 
 last :: DhallList a -> Maybe a
 last = \case
   Empty -> Nothing
   One x -> Just x
   Vec v -> Just (Data.Vector.last v)
-  Many _ _ _ x -> Just x
+  Mud _ _ _ x -> Just x
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
 foldMap f = \case
   Empty -> mempty
   One a -> f a
   Vec v -> Data.Foldable.foldMap f v
-  Many _ a xs b -> f a <> ifoldMap f xs <> f b
+  Mud _ a xs b -> f a <> ifoldMap f xs <> f b
 {-# inline foldMap #-}
 
 -- | The result is normalized!
@@ -224,7 +224,7 @@ mapWithIndex f = \case
   Empty -> Empty
   One x -> One (f 0 x)
   Vec v -> Vec (Data.Vector.imap f v)
-  x@Many{} -> Vec (Data.Vector.imap f (toVector x))
+  x@Mud{} -> Vec (Data.Vector.imap f (toVector x))
 {-# inline mapWithIndex #-}
 
 -- | The result is normalized!
@@ -233,7 +233,7 @@ map f = \case
   Empty -> Empty
   One x -> One (f x)
   Vec v -> Vec (Data.Vector.map f v)
-  x@Many{} -> Vec (Data.Vector.map f (toVector x))
+  x@Mud{} -> Vec (Data.Vector.map f (toVector x))
 {-# inline map #-}
 
 -- | The result is normalized!
@@ -242,14 +242,14 @@ traverse f = \case
   Empty -> pure Empty
   One x -> One <$> f x
   Vec v -> Vec <$> Data.Traversable.traverse f v
-  x@Many{} -> Vec <$> Data.Traversable.traverse f (toVector x)
+  x@Mud{} -> Vec <$> Data.Traversable.traverse f (toVector x)
 
 toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
   One a -> [a]
   Vec v -> Data.Vector.toList v
-  Many _ h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
+  Mud _ h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
 
 -- TODO: Optimize me
 toVector :: DhallList a -> Vector a
@@ -257,7 +257,7 @@ toVector = \case
   Empty -> Data.Vector.empty
   One a -> Data.Vector.singleton a
   Vec v -> v
-  x@Many{} -> Data.Vector.fromListN (length x) (toList x)
+  x@Mud{} -> Data.Vector.fromListN (length x) (toList x)
 
 -- TODO: Consider having IRev contain a vector, to simplify folds and traversals
 -- Or: Remove IRev, implement ireverse via mutable vector
