@@ -111,13 +111,16 @@ fromVector v = case Data.Vector.length v of
       v' = Data.Vector.init (Data.Vector.tail v)
 
 append :: DhallList a -> DhallList a -> DhallList a
-Empty `append` y = y
-x@One{} `append` Empty = x
-One x `append` One y = Many x IEmpty y
-One x `append` Many hy ys ly = Many x (icons hy ys) ly
-x@Many{} `append` Empty = x
-Many hx xs lx `append` One y = Many hx (isnoc xs lx) y
-Many hx xs lx `append` Many hy ys ly = Many hx (iglue xs lx hy ys) ly
+append x0 = case x0 of
+  Empty -> id
+  One x -> \case
+    Empty -> x0
+    One y -> Many x IEmpty y
+    Many hy ys ly -> Many x (icons hy ys) ly
+  Many hx xs lx -> \case
+    Empty -> x0
+    One y -> Many hx (isnoc xs lx) y
+    Many hy ys ly -> Many hx (iglue xs lx hy ys) ly
 
 reverse :: DhallList a -> DhallList a
 reverse Empty = Empty
