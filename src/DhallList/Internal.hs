@@ -43,10 +43,11 @@ import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
 
+-- TODO: Add Vec constructor (non-empty)
 data DhallList a
   = Empty
   | One a
-  | Many a !(Inner a) a
+  | Many {-# unpack #-} !Int a !(Inner a) a
   deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
@@ -101,8 +102,8 @@ fromList :: [a] -> DhallList a
 fromList = \case
   [] -> Empty
   [a] -> One a
-  [a, b] -> Many a IEmpty b
-  a : as -> Many a (ifromVector v') b
+  [a, b] -> Many 2 a IEmpty b
+  a : as -> Many (Data.Vector.length v + 1) a (ifromVector v') b
     where
       v = Data.Vector.fromList as
       v' = Data.Vector.init v
@@ -112,29 +113,29 @@ fromVector :: Vector a -> DhallList a
 fromVector v = case Data.Vector.length v of
   0 -> Empty
   1 -> One (Data.Vector.head v)
-  _ -> Many a (ifromVector v') b
+  n -> Many n a (ifromVector v') b
     where
       a = Data.Vector.head v
       b = Data.Vector.last v
       v' = Data.Vector.init (Data.Vector.tail v)
 
 replicateM :: Monad m => Int -> m a -> m (DhallList a)
-replicateM n m = case n of
-  _ | n <= 0 -> pure empty
+replicateM n0 m = case n0 of
+  n | n <= 0 -> pure empty
   1 -> singleton <$> m
   2 -> do
     a <- m
     b <- m
-    pure (Many a IEmpty b)
+    pure (Many 2 a IEmpty b)
   3 -> do
     a <- m
     b <- m
     c <- m
-    pure (Many a (IOne b) c)
-  _ -> do
+    pure (Many 3 a (IOne b) c)
+  n -> do
     a <- m
     v <- Data.Vector.replicateM (n - 1) m
-    pure (Many a (IVec (Data.Vector.init v)) (Data.Vector.last v))
+    pure (Many n a (IVec (Data.Vector.init v)) (Data.Vector.last v))
 {-# inline replicateM #-}
 
 append :: DhallList a -> DhallList a -> DhallList a
@@ -142,24 +143,24 @@ append x0 = case x0 of
   Empty -> id
   One x -> \case
     Empty -> x0
-    One y -> Many x IEmpty y
-    Many hy ys ly -> Many x (icons hy ys) ly
-  Many hx xs lx -> \case
+    One y -> Many 2 x IEmpty y
+    Many sy hy ys ly -> Many (sy + 1) x (icons hy ys) ly
+  Many sx hx xs lx -> \case
     Empty -> x0
-    One y -> Many hx (isnoc xs lx) y
-    Many hy ys ly -> Many hx (iglue xs lx hy ys) ly
+    One y -> Many (sx + 1) hx (isnoc xs lx) y
+    Many sy hy ys ly -> Many (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inline append #-}
 
 reverse :: DhallList a -> DhallList a
 reverse Empty = Empty
 reverse x@One{} = x
-reverse (Many h xs l) = Many l (ireverse xs) h
+reverse (Many s h xs l) = Many s l (ireverse xs) h
 
 length :: DhallList a -> Int
 length = \case
   Empty -> 0
   One _ -> 1
-  Many _ xs _ -> ilength xs + 2
+  Many s _ _ _ -> s
 
 null :: DhallList a -> Bool
 null = \case
@@ -170,42 +171,42 @@ head :: DhallList a -> Maybe a
 head = \case
   Empty -> Nothing
   One x -> Just x
-  Many x _ _ -> Just x
+  Many _ x _ _ -> Just x
 
 last :: DhallList a -> Maybe a
 last = \case
   Empty -> Nothing
   One x -> Just x
-  Many _ _ x -> Just x
+  Many _ _ _ x -> Just x
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
 foldMap f = \case
   Empty -> mempty
   One a -> f a
-  Many a xs b -> f a <> ifoldMap f xs <> f b
+  Many _ a xs b -> f a <> ifoldMap f xs <> f b
 {-# inline foldMap #-}
 
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
 mapWithIndex f = \case
   Empty -> Empty
   One x -> One (f 0 x)
-  Many a IEmpty b -> Many (f 0 a) IEmpty (f 1 b)
-  Many a (IOne x) b -> Many (f 0 a) (IOne (f 1 x)) (f 2 b)
-  Many a (IVec v) b -> Many (f 0 a) (IVec (Data.Vector.imap (\ix x -> f (ix + 1) x) v)) (f (Data.Vector.length v + 1) b)
-  Many a xs b -> Many (f 0 a) (IVec (Data.Vector.init v1)) (Data.Vector.last v1)
+  Many s a IEmpty b -> Many s (f 0 a) IEmpty (f 1 b)
+  Many s a (IOne x) b -> Many s (f 0 a) (IOne (f 1 x)) (f 2 b)
+  Many s a (IVec v) b -> Many s (f 0 a) (IVec (Data.Vector.imap (\ix x -> f (ix + 1) x) v)) (f (s - 1) b)
+  Many s a xs b -> Many s (f 0 a) (IVec (Data.Vector.init v1)) (Data.Vector.last v1)
     where
       v1 = Data.Vector.imap (\ix x -> f (ix + 1) x) v0
-      v0 = Data.Vector.fromListN (ilength xs + 1) (itoList (isnoc xs b))
+      v0 = Data.Vector.fromListN (s - 1) (itoList (isnoc xs b))
 {-# inline mapWithIndex #-}
 
 map :: (a -> b) -> DhallList a -> DhallList b
 map f = \case
   Empty -> Empty
   One x -> One (f x)
-  Many a IEmpty b -> Many (f a) IEmpty (f b)
-  Many a (IOne x) b -> Many (f a) (IOne (f x)) (f b)
-  Many a (IVec v) b -> Many (f a) (IVec (f <$> v)) (f b)
-  Many a xs b -> Many (f a) (IVec (Data.Vector.init v)) (Data.Vector.last v)
+  Many s a IEmpty b -> Many s (f a) IEmpty (f b)
+  Many s a (IOne x) b -> Many s (f a) (IOne (f x)) (f b)
+  Many s a (IVec v) b -> Many s (f a) (IVec (f <$> v)) (f b)
+  Many s a xs b -> Many s (f a) (IVec (Data.Vector.init v)) (Data.Vector.last v)
     where
       v = Data.Vector.fromListN (ilength xs + 1) (f <$> itoList (isnoc xs b))
 {-# inline map #-}
@@ -214,12 +215,12 @@ traverseWithIndex :: Applicative f => (Int -> a -> f b) -> DhallList a -> f (Dha
 traverseWithIndex f = \case
   Empty -> pure Empty
   One a -> One <$> f 0 a
-  Many h xs l ->
+  Many s h xs l ->
     liftA3
-      Many
+      (Many s)
       (f 0 h)
       (itraverseWithIndex f 1 xs)
-      (f (ilength xs + 1) l)
+      (f (s - 1) l)
 
 traverse :: Applicative f => (a -> f b) -> DhallList a -> f (DhallList b)
 traverse f = traverseWithIndex (\_ix x -> f x)
@@ -228,8 +229,9 @@ toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
   One a -> [a]
-  Many h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
+  Many _ h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
 
+-- TODO: Optimize me
 toVector :: DhallList a -> Vector a
 toVector = \case
   Empty -> Data.Vector.empty
