@@ -237,6 +237,8 @@ toVector = \case
   One a -> Data.Vector.singleton a
   x@Many{} -> Data.Vector.fromListN (length x) (toList x)
 
+-- TODO: Consider having IRev contain a vector, to simplify folds and traversals
+-- Or: Remove IRev, implement ireverse via mutable vector
 data Inner a
   = IEmpty
   | IOne a -- TODO: Consider removing this constructor
