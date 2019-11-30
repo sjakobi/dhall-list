@@ -5,6 +5,8 @@ module DhallList
   , singleton
   , fromList
   , fromVector
+  , toList
+  , toVector
   , append
   , reverse
   , length
