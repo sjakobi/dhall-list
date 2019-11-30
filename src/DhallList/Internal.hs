@@ -11,6 +11,7 @@ module DhallList.Internal
   , singleton
   , fromList
   , fromVector
+  , replicateM
   , toList
   , toVector
   , append
@@ -25,11 +26,12 @@ module DhallList.Internal
   , traverseWithIndex
   ) where
 
-import Control.Applicative (liftA2, liftA3)
+-- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
+
+import Control.Applicative (Alternative, liftA2, liftA3)
 import Control.DeepSeq (NFData)
 import Data.Coerce (Coercible, coerce)
 import Data.Data (Data)
-import Data.Functor.Identity (Identity(..))
 import Data.Monoid (Dual(..))
 import Data.Vector (Vector)
 import GHC.Generics (Generic)
@@ -37,6 +39,7 @@ import Instances.TH.Lift ()
 import Language.Haskell.TH.Syntax (Lift)
 import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap)
 
+import qualified Control.Applicative
 import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
@@ -75,6 +78,10 @@ instance Monad DhallList where
   -- TODO: Optimize?
   xs >>= f = fromList (toList xs >>= toList . f)
 
+instance Alternative DhallList where
+  empty = empty
+  (<|>) = append
+
 -- TODO: Add foldr' (needed for Dhall.Eval)
 instance Foldable DhallList where
   foldMap = foldMap
@@ -112,6 +119,25 @@ fromVector v = case Data.Vector.length v of
       b = Data.Vector.last v
       v' = Data.Vector.init (Data.Vector.tail v)
 
+replicateM :: Monad m => Int -> m a -> m (DhallList a)
+replicateM n m = case n of
+  _ | n <= 0 -> pure empty
+  1 -> singleton <$> m
+  2 -> do
+    a <- m
+    b <- m
+    pure (Many a IEmpty b)
+  3 -> do
+    a <- m
+    b <- m
+    c <- m
+    pure (Many a (IOne b) c)
+  _ -> do
+    a <- m
+    v <- Data.Vector.replicateM (n - 1) m
+    pure (Many a (IVec (Data.Vector.init v)) (Data.Vector.last v))
+{-# inline replicateM #-}
+
 append :: DhallList a -> DhallList a -> DhallList a
 append x0 = case x0 of
   Empty -> id
@@ -123,6 +149,7 @@ append x0 = case x0 of
     Empty -> x0
     One y -> Many hx (isnoc xs lx) y
     Many hy ys ly -> Many hx (iglue xs lx hy ys) ly
+{-# inline append #-}
 
 reverse :: DhallList a -> DhallList a
 reverse Empty = Empty
@@ -157,13 +184,32 @@ foldMap f = \case
   Empty -> mempty
   One a -> f a
   Many a xs b -> f a <> ifoldMap f xs <> f b
+{-# inline foldMap #-}
 
--- TODO: Implement with Data.Vector.imap instead
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
-mapWithIndex f = runIdentity . traverseWithIndex (\ix x -> Identity (f ix x))
+mapWithIndex f = \case
+  Empty -> Empty
+  One x -> One (f 0 x)
+  Many a IEmpty b -> Many (f 0 a) IEmpty (f 1 b)
+  Many a (IOne x) b -> Many (f 0 a) (IOne (f 1 x)) (f 2 b)
+  Many a (IVec v) b -> Many (f 0 a) (IVec (Data.Vector.imap (\ix x -> f (ix + 1) x) v)) (f (Data.Vector.length v + 1) b)
+  Many a xs b -> Many (f 0 a) (IVec (Data.Vector.init v1)) (Data.Vector.last v1)
+    where
+      v1 = Data.Vector.imap (\ix x -> f (ix + 1) x) v0
+      v0 = Data.Vector.fromListN (ilength xs + 1) (itoList (isnoc xs b))
+{-# inline mapWithIndex #-}
 
 map :: (a -> b) -> DhallList a -> DhallList b
-map f = mapWithIndex (\_ix x -> f x)
+map f = \case
+  Empty -> Empty
+  One x -> One (f x)
+  Many a IEmpty b -> Many (f a) IEmpty (f b)
+  Many a (IOne x) b -> Many (f a) (IOne (f x)) (f b)
+  Many a (IVec v) b -> Many (f a) (IVec (f <$> v)) (f b)
+  Many a xs b -> Many (f a) (IVec (Data.Vector.init v)) (Data.Vector.last v)
+    where
+      v = Data.Vector.fromListN (ilength xs + 1) (f <$> itoList (isnoc xs b))
+{-# inline map #-}
 
 traverseWithIndex :: Applicative f => (Int -> a -> f b) -> DhallList a -> f (DhallList b)
 traverseWithIndex f = \case
@@ -200,7 +246,7 @@ data Inner a
     -- ^ Invariant: length >= 2
   | IVec {-# unpack #-} !(Vector a)
     -- ^ Invariant: length >= 2
-  | IRev !(Inner a)
+  | IRev {-# unpack #-} !Int !(Inner a)
     -- ^ Invariant: length >= 2
     --   Invariant: The inner Inner is not an IRev itself
   | ICat {-# unpack #-} !Int !(Inner a) !(Inner a)
@@ -209,13 +255,15 @@ data Inner a
 
 icons :: a -> Inner a -> Inner a
 icons x IEmpty = IOne x
-icons x (IRev y) = IRev (ISnoc (ilength y + 1) y x) -- TODO: Maybe reconsider this optimization
+icons x (IRev s y) = IRev (s + 1) (ISnoc (ilength y + 1) y x) -- TODO: Maybe reconsider this optimization
 icons x y = ICons (ilength y + 1) x y
+{-# inline icons #-}
 
 isnoc :: Inner a -> a -> Inner a
 isnoc IEmpty y = IOne y
-isnoc (IRev x) y = IRev (ICons (ilength x + 1) y x) -- TODO: Maybe reconsider this optimization
+isnoc (IRev s x) y = IRev (s + 1) (ICons (ilength x + 1) y x) -- TODO: Maybe reconsider this optimization
 isnoc x y = ISnoc (ilength x + 1) x y
+{-# inline isnoc #-}
 
 ilength :: Inner a -> Int
 ilength IEmpty = 0
@@ -223,9 +271,11 @@ ilength (IOne _) = 1
 ilength (ICons s _ _) = s
 ilength (ISnoc s _ _) = s
 ilength (IVec v) = Data.Vector.length v
-ilength (IRev x) = ilength x
+ilength (IRev s _) = s
 ilength (ICat s _ _) = s
+{-# inline ilength #-}
 
+-- TODO: Do exhaustive case analysis
 iglue :: Inner a -> a -> a -> Inner a -> Inner a
 iglue as b c ds = case (as, ds) of
   (IEmpty, IEmpty) -> ICons 2 b (IOne c)
@@ -235,14 +285,16 @@ iglue as b c ds = case (as, ds) of
   _ -> ICat (ilength as + dlen + 2) as (ICons (dlen + 2) b (ICons (dlen + 1) c ds))
     where
       dlen = ilength ds
+{-# inline iglue #-}
 
 ireverse :: Inner a -> Inner a
 ireverse x0 = case x0 of
   IEmpty -> IEmpty
   IOne _ -> x0
-  IRev xs -> xs
-  _      -> IRev x0
+  IRev _ xs -> xs
+  _      -> IRev (ilength x0) x0
 
+-- TODO: Consider writing to a mutable vector
 itoList :: Inner a -> [a]
 itoList = \case
   IEmpty -> []
@@ -250,8 +302,9 @@ itoList = \case
   ICons _ a xs -> a : itoList xs
   ISnoc _ xs a -> itoList xs ++ [a] -- FIXME: Construct a dlist first?
   IVec v -> Data.Vector.toList v
-  IRev xs -> ireverseToList xs
+  IRev _ xs -> ireverseToList xs
   ICat _ xs ys -> itoList xs ++ itoList ys -- FIXME
+{-# inline itoList #-}
 
 ireverseToList :: Inner a -> [a]
 ireverseToList = \case
@@ -260,7 +313,7 @@ ireverseToList = \case
   ICons _ a xs -> ireverseToList xs ++ [a] -- FIXME
   ISnoc _ xs a -> a : ireverseToList xs
   IVec v -> Data.Vector.toList (Data.Vector.reverse v)
-  IRev xs -> itoList xs
+  IRev _ xs -> itoList xs
   ICat _ xs ys -> ireverseToList ys ++ ireverseToList xs -- FIXME
 
 -- TODO: Actually Dhall just needs a mapMWithIndex_ that can be built on top of
@@ -290,8 +343,9 @@ ifoldMap f = \case
   ICons _ a xs -> f a <> ifoldMap f xs
   ISnoc _ xs a -> ifoldMap f xs <> f a
   IVec v -> Data.Foldable.foldMap f v
-  IRev xs -> getDual (ifoldMap (Dual #. f) xs)
+  IRev _ xs -> getDual (ifoldMap (Dual #. f) xs)
   ICat _ xs ys -> ifoldMap f xs <> ifoldMap f ys
+{-# inline ifoldMap #-}
 
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
 (#.) _f = coerce

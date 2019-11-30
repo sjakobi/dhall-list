@@ -5,6 +5,7 @@ module DhallList
   , singleton
   , fromList
   , fromVector
+  , replicateM
   , toList
   , toVector
   , append
