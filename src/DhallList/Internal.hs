@@ -238,6 +238,8 @@ toVector = \case
 
 -- TODO: Consider having IRev contain a vector, to simplify folds and traversals
 -- Or: Remove IRev, implement ireverse via mutable vector
+
+-- TODO: Remove the size fields, track the size in @Many@ instead.
 data Inner a
   = IEmpty
   | IOne a -- TODO: Consider removing this constructor
