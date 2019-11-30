@@ -127,11 +127,6 @@ replicateM n0 m = case n0 of
     a <- m
     b <- m
     pure (Many 2 a IEmpty b)
-  3 -> do
-    a <- m
-    b <- m
-    c <- m
-    pure (Many 3 a (IOne b) c)
   n -> do
     a <- m
     v <- Data.Vector.replicateM (n - 1) m
@@ -191,7 +186,6 @@ mapWithIndex f = \case
   Empty -> Empty
   One x -> One (f 0 x)
   Many s a IEmpty b -> Many s (f 0 a) IEmpty (f 1 b)
-  Many s a (IOne x) b -> Many s (f 0 a) (IOne (f 1 x)) (f 2 b)
   Many s a (IVec v) b -> Many s (f 0 a) (IVec (Data.Vector.imap (\ix x -> f (ix + 1) x) v)) (f (s - 1) b)
   Many s a xs b -> Many s (f 0 a) (IVec (Data.Vector.init v1)) (Data.Vector.last v1)
     where
@@ -204,7 +198,6 @@ map f = \case
   Empty -> Empty
   One x -> One (f x)
   Many s a IEmpty b -> Many s (f a) IEmpty (f b)
-  Many s a (IOne x) b -> Many s (f a) (IOne (f x)) (f b)
   Many s a (IVec v) b -> Many s (f a) (IVec (f <$> v)) (f b)
   Many s a xs b -> Many s (f a) (IVec (Data.Vector.init v)) (Data.Vector.last v)
     where
@@ -242,7 +235,6 @@ toVector = \case
 -- Or: Remove IRev, implement ireverse via mutable vector
 data Inner a
   = IEmpty
-  | IOne a -- TODO: Consider removing this constructor
   | ICons a !(Inner a)
   | ISnoc !(Inner a) a
   | IVec {-# unpack #-} !(Vector a)
@@ -251,30 +243,28 @@ data Inner a
   deriving (Show, Data, Generic, NFData, Lift)
 
 icons :: a -> Inner a -> Inner a
-icons x IEmpty = IOne x
 icons x (IRev y) = IRev (ISnoc y x) -- TODO: Maybe reconsider this optimization
 icons x y = ICons x y
 {-# inline icons #-}
 
 isnoc :: Inner a -> a -> Inner a
-isnoc IEmpty y = IOne y
+isnoc IEmpty y = ICons y IEmpty -- Prefer ICons! Why though?
 isnoc (IRev x) y = IRev (ICons y x) -- TODO: Maybe reconsider this optimization
 isnoc x y = ISnoc x y
 {-# inline isnoc #-}
 
--- TODO: Do exhaustive case analysis
+-- TODO: Maybe try some balancing, empty-vector elimination etc. if it seems useful
 iglue :: Inner a -> a -> a -> Inner a -> Inner a
-iglue as b c ds = case (as, ds) of
-  (IEmpty, IEmpty) -> ICons b (IOne c)
-  (IOne a, _) -> ICons a (ICons b (ICons c ds))
-    where
-  _ -> ICat as (ICons b (ICons c ds))
+iglue as b c ds = case as of
+  IEmpty -> b `ICons` (c `ICons` ds)
+  _ -> case ds of
+    IEmpty -> (as `ISnoc` b) `ISnoc` c
+    _ -> as `ICat` (b `ICons` (c `ICons` ds))
 {-# inline iglue #-}
 
 ireverse :: Inner a -> Inner a
 ireverse x0 = case x0 of
   IEmpty -> IEmpty
-  IOne _ -> x0
   IRev xs -> xs
   _      -> IRev x0
 
@@ -282,7 +272,6 @@ ireverse x0 = case x0 of
 itoList :: Inner a -> [a]
 itoList = \case
   IEmpty -> []
-  IOne a -> [a]
   ICons a xs -> a : itoList xs
   ISnoc xs a -> itoList xs ++ [a] -- FIXME: Construct a dlist first?
   IVec v -> Data.Vector.toList v
@@ -293,7 +282,6 @@ itoList = \case
 ireverseToList :: Inner a -> [a]
 ireverseToList = \case
   IEmpty -> []
-  IOne a -> [a]
   ICons a xs -> ireverseToList xs ++ [a] -- FIXME
   ISnoc xs a -> a : ireverseToList xs
   IVec v -> Data.Vector.toList (Data.Vector.reverse v)
@@ -311,19 +299,15 @@ itraverseWithIndex f ix xs0 = ifromList <$> go (itoList xs0) ix
 ifromList :: [a] -> Inner a
 ifromList = \case
   [] -> IEmpty
-  [x] -> IOne x
+  [x] -> ICons x IEmpty
   xs -> IVec (Data.Vector.fromList xs)
 
 ifromVector :: Vector a -> Inner a
-ifromVector v = case Data.Vector.length v of
-  0 -> IEmpty
-  1 -> IOne (Data.Vector.head v)
-  _ -> IVec v
+ifromVector = IVec
 
 ifoldMap :: Monoid m => (a -> m) -> Inner a -> m
 ifoldMap f = \case
   IEmpty -> mempty
-  IOne a -> f a
   ICons a xs -> f a <> ifoldMap f xs
   ISnoc xs a -> ifoldMap f xs <> f a
   IVec v -> Data.Foldable.foldMap f v
