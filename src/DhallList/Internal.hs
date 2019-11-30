@@ -208,7 +208,7 @@ map f = \case
   Many s a (IVec v) b -> Many s (f a) (IVec (f <$> v)) (f b)
   Many s a xs b -> Many s (f a) (IVec (Data.Vector.init v)) (Data.Vector.last v)
     where
-      v = Data.Vector.fromListN (ilength xs + 1) (f <$> itoList (isnoc xs b))
+      v = Data.Vector.fromListN (s - 1) (f <$> itoList (isnoc xs b))
 {-# inline map #-}
 
 traverseWithIndex :: Applicative f => (Int -> a -> f b) -> DhallList a -> f (DhallList b)
@@ -245,81 +245,68 @@ toVector = \case
 data Inner a
   = IEmpty
   | IOne a -- TODO: Consider removing this constructor
-  | ICons {-# unpack #-} !Int a !(Inner a)
+  | ICons a !(Inner a)
     -- ^ Invariant: length >= 2
-  | ISnoc {-# unpack #-} !Int !(Inner a) a
+  | ISnoc !(Inner a) a
     -- ^ Invariant: length >= 2
   | IVec {-# unpack #-} !(Vector a)
     -- ^ Invariant: length >= 2
-  | IRev {-# unpack #-} !Int !(Inner a)
+  | IRev !(Inner a)
     -- ^ Invariant: length >= 2
     --   Invariant: The inner Inner is not an IRev itself
-  | ICat {-# unpack #-} !Int !(Inner a) !(Inner a)
+  | ICat !(Inner a) !(Inner a)
     -- ^ Invariant: both inner Inners have length >= 2
   deriving (Show, Data, Generic, NFData, Lift)
 
 icons :: a -> Inner a -> Inner a
 icons x IEmpty = IOne x
-icons x (IRev s y) = IRev (s + 1) (ISnoc (ilength y + 1) y x) -- TODO: Maybe reconsider this optimization
-icons x y = ICons (ilength y + 1) x y
+icons x (IRev y) = IRev (ISnoc y x) -- TODO: Maybe reconsider this optimization
+icons x y = ICons x y
 {-# inline icons #-}
 
 isnoc :: Inner a -> a -> Inner a
 isnoc IEmpty y = IOne y
-isnoc (IRev s x) y = IRev (s + 1) (ICons (ilength x + 1) y x) -- TODO: Maybe reconsider this optimization
-isnoc x y = ISnoc (ilength x + 1) x y
+isnoc (IRev x) y = IRev (ICons y x) -- TODO: Maybe reconsider this optimization
+isnoc x y = ISnoc x y
 {-# inline isnoc #-}
-
-ilength :: Inner a -> Int
-ilength IEmpty = 0
-ilength (IOne _) = 1
-ilength (ICons s _ _) = s
-ilength (ISnoc s _ _) = s
-ilength (IVec v) = Data.Vector.length v
-ilength (IRev s _) = s
-ilength (ICat s _ _) = s
-{-# inline ilength #-}
 
 -- TODO: Do exhaustive case analysis
 iglue :: Inner a -> a -> a -> Inner a -> Inner a
 iglue as b c ds = case (as, ds) of
-  (IEmpty, IEmpty) -> ICons 2 b (IOne c)
-  (IOne a, _) -> ICons (dlen + 3) a (ICons (dlen + 2) b (ICons (dlen + 1) c ds))
+  (IEmpty, IEmpty) -> ICons b (IOne c)
+  (IOne a, _) -> ICons a (ICons b (ICons c ds))
     where
-      dlen = ilength ds
-  _ -> ICat (ilength as + dlen + 2) as (ICons (dlen + 2) b (ICons (dlen + 1) c ds))
-    where
-      dlen = ilength ds
+  _ -> ICat as (ICons b (ICons c ds))
 {-# inline iglue #-}
 
 ireverse :: Inner a -> Inner a
 ireverse x0 = case x0 of
   IEmpty -> IEmpty
   IOne _ -> x0
-  IRev _ xs -> xs
-  _      -> IRev (ilength x0) x0
+  IRev xs -> xs
+  _      -> IRev x0
 
 -- TODO: Consider writing to a mutable vector
 itoList :: Inner a -> [a]
 itoList = \case
   IEmpty -> []
   IOne a -> [a]
-  ICons _ a xs -> a : itoList xs
-  ISnoc _ xs a -> itoList xs ++ [a] -- FIXME: Construct a dlist first?
+  ICons a xs -> a : itoList xs
+  ISnoc xs a -> itoList xs ++ [a] -- FIXME: Construct a dlist first?
   IVec v -> Data.Vector.toList v
-  IRev _ xs -> ireverseToList xs
-  ICat _ xs ys -> itoList xs ++ itoList ys -- FIXME
+  IRev xs -> ireverseToList xs
+  ICat xs ys -> itoList xs ++ itoList ys -- FIXME
 {-# inline itoList #-}
 
 ireverseToList :: Inner a -> [a]
 ireverseToList = \case
   IEmpty -> []
   IOne a -> [a]
-  ICons _ a xs -> ireverseToList xs ++ [a] -- FIXME
-  ISnoc _ xs a -> a : ireverseToList xs
+  ICons a xs -> ireverseToList xs ++ [a] -- FIXME
+  ISnoc xs a -> a : ireverseToList xs
   IVec v -> Data.Vector.toList (Data.Vector.reverse v)
-  IRev _ xs -> itoList xs
-  ICat _ xs ys -> ireverseToList ys ++ ireverseToList xs -- FIXME
+  IRev xs -> itoList xs
+  ICat xs ys -> ireverseToList ys ++ ireverseToList xs -- FIXME
 
 -- TODO: Actually Dhall just needs a mapMWithIndex_ that can be built on top of
 -- Data.Vector.imapM_
@@ -345,11 +332,11 @@ ifoldMap :: Monoid m => (a -> m) -> Inner a -> m
 ifoldMap f = \case
   IEmpty -> mempty
   IOne a -> f a
-  ICons _ a xs -> f a <> ifoldMap f xs
-  ISnoc _ xs a -> ifoldMap f xs <> f a
+  ICons a xs -> f a <> ifoldMap f xs
+  ISnoc xs a -> ifoldMap f xs <> f a
   IVec v -> Data.Foldable.foldMap f v
-  IRev _ xs -> getDual (ifoldMap (Dual #. f) xs)
-  ICat _ xs ys -> ifoldMap f xs <> ifoldMap f ys
+  IRev xs -> getDual (ifoldMap (Dual #. f) xs)
+  ICat xs ys -> ifoldMap f xs <> ifoldMap f ys
 {-# inline ifoldMap #-}
 
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
