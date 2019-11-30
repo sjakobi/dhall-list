@@ -179,9 +179,9 @@ reverse = \case
     n ->
       Many
         n
-        (Data.Vector.head v)
-        (ifromVector (Data.Vector.init (Data.Vector.tail v)))
         (Data.Vector.last v)
+        (ireverse (ifromVector (Data.Vector.init (Data.Vector.tail v))))
+        (Data.Vector.head v)
   Many s h xs l -> Many s l (ireverse xs) h
 
 length :: DhallList a -> Int
