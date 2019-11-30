@@ -240,22 +240,14 @@ toVector = \case
 
 -- TODO: Consider having IRev contain a vector, to simplify folds and traversals
 -- Or: Remove IRev, implement ireverse via mutable vector
-
--- TODO: Remove the size fields, track the size in @Many@ instead.
 data Inner a
   = IEmpty
   | IOne a -- TODO: Consider removing this constructor
   | ICons a !(Inner a)
-    -- ^ Invariant: length >= 2
   | ISnoc !(Inner a) a
-    -- ^ Invariant: length >= 2
   | IVec {-# unpack #-} !(Vector a)
-    -- ^ Invariant: length >= 2
   | IRev !(Inner a)
-    -- ^ Invariant: length >= 2
-    --   Invariant: The inner Inner is not an IRev itself
   | ICat !(Inner a) !(Inner a)
-    -- ^ Invariant: both inner Inners have length >= 2
   deriving (Show, Data, Generic, NFData, Lift)
 
 icons :: a -> Inner a -> Inner a
