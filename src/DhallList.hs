@@ -17,7 +17,6 @@ module DhallList
   , map
   , mapWithIndex
   , traverse
-  , traverseWithIndex
   ) where
 
 import DhallList.Internal
