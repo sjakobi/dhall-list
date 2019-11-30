@@ -11,6 +11,8 @@ module DhallList.Internal
   , singleton
   , fromList
   , fromVector
+  , toList
+  , toVector
   , append
   , reverse
   , length
@@ -182,6 +184,12 @@ toList = \case
   Empty -> []
   One a -> [a]
   Many h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
+
+toVector :: DhallList a -> Vector a
+toVector = \case
+  Empty -> Data.Vector.empty
+  One a -> Data.Vector.singleton a
+  x@Many{} -> Data.Vector.fromListN (length x) (toList x)
 
 data Inner a
   = IEmpty
