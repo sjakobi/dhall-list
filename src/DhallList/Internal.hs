@@ -95,7 +95,6 @@ instance Alternative DhallList where
   empty = empty
   (<|>) = append
 
--- TODO: Add foldr' (needed for Dhall.Eval)
 -- TODO: Add foldl (for normalizeWithM)
 instance Foldable DhallList where
   foldMap = foldMap
@@ -187,10 +186,11 @@ append x0 = case x0 of
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inlinable append #-}
 
--- TODO: Add special cases for Empty, One etc?
 eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
+eqBy _ Empty Empty = True
 eqBy f xs ys =
       length xs == length ys
+      -- Some more laziness would be nice here…
   &&  Data.Vector.Generic.eqBy f (toVector xs) (toVector ys)
 {-# inlinable eqBy #-}
 
