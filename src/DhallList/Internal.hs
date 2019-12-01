@@ -32,10 +32,12 @@ module DhallList.Internal
 
 import Control.Applicative (Alternative)
 import Control.DeepSeq (NFData)
+import Control.Monad.ST (ST, runST)
 import Data.Coerce (Coercible, coerce)
 import Data.Data (Data)
 import Data.Monoid (Dual(..))
 import Data.Vector (Vector)
+import Data.Vector (MVector)
 import GHC.Generics (Generic)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Syntax (Lift)
@@ -45,6 +47,7 @@ import qualified Control.Applicative
 import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
+import qualified Data.Vector.Mutable
 
 data DhallList a
   = Empty
@@ -55,9 +58,8 @@ data DhallList a
   deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
-  -- TODO: Optimize
   -- TODO: Define as @eqBy (==)@
-  xs == ys = toList xs == toList ys
+  xs == ys = length xs == length ys && toList xs == toList ys
 
 instance Ord a => Ord (DhallList a) where
   -- TODO: Optimize
@@ -104,8 +106,8 @@ singleton = One
 
 fromList :: [a] -> DhallList a
 fromList = \case
-  [] -> Empty
-  [x] -> One x
+  [] -> empty
+  [x] -> singleton x
   xs -> Vec (Data.Vector.fromList xs)
 
 fromListN :: Int -> [a] -> DhallList a
@@ -175,7 +177,7 @@ reverse = \case
   Empty -> Empty
   x@One{} -> x
   Vec v -> case Data.Vector.length v of
-    1 -> One (Data.Vector.head v)
+    1 -> singleton (Data.Vector.head v)
     n ->
       Mud
         n
@@ -221,8 +223,8 @@ foldMap f = \case
 -- | The result is normalized!
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
 mapWithIndex f = \case
-  Empty -> Empty
-  One x -> One (f 0 x)
+  Empty -> empty
+  One x -> singleton (f 0 x)
   Vec v -> Vec (Data.Vector.imap f v)
   x@Mud{} -> Vec (Data.Vector.imap f (toVector x))
 {-# inline mapWithIndex #-}
@@ -249,7 +251,7 @@ toList = \case
   Empty -> []
   One a -> [a]
   Vec v -> Data.Vector.toList v
-  Mud _ h xs l -> h : itoList (isnoc xs l) -- TODO: have itoList :: Inner a -> a -> [a] instead
+  x@Mud{} -> Data.Vector.toList (toVector x)
 
 -- TODO: Optimize me
 toVector :: DhallList a -> Vector a
@@ -257,7 +259,18 @@ toVector = \case
   Empty -> Data.Vector.empty
   One a -> Data.Vector.singleton a
   Vec v -> v
-  x@Mud{} -> Data.Vector.fromListN (length x) (toList x)
+  Mud s h xs l -> mudToVector s h xs l
+
+mudToVector :: Int -> a -> Inner a -> a -> Vector a
+mudToVector n h xs l
+  | n == 2 = Data.Vector.fromListN 2 [h, l]
+  | otherwise = runST $ do
+      v <- Data.Vector.Mutable.new n
+      Data.Vector.Mutable.write v 0 h
+      ix <- iwrite v 1 xs
+      -- assert (ix == n - 1)
+      Data.Vector.Mutable.write v ix l
+      Data.Vector.freeze v
 
 -- TODO: Consider having IRev contain a vector, to simplify folds and traversals
 -- Or: Remove IRev, implement ireverse via mutable vector
@@ -300,26 +313,6 @@ ireverse x0 = case x0 of
   IRev xs -> xs
   _      -> IRev x0
 
--- TODO: Consider writing to a mutable vector
-itoList :: Inner a -> [a]
-itoList = \case
-  IEmpty -> []
-  ICons a xs -> a : itoList xs
-  ISnoc xs a -> itoList xs ++ [a] -- FIXME: Construct a dlist first?
-  IVec v -> Data.Vector.toList v
-  IRev xs -> ireverseToList xs
-  ICat xs ys -> itoList xs ++ itoList ys -- FIXME
-{-# inline itoList #-}
-
-ireverseToList :: Inner a -> [a]
-ireverseToList = \case
-  IEmpty -> []
-  ICons a xs -> ireverseToList xs ++ [a] -- FIXME
-  ISnoc xs a -> a : ireverseToList xs
-  IVec v -> Data.Vector.toList (Data.Vector.reverse v)
-  IRev xs -> itoList xs
-  ICat xs ys -> ireverseToList ys ++ ireverseToList xs -- FIXME
-
 ifromVector :: Vector a -> Inner a
 ifromVector = IVec
 
@@ -336,3 +329,40 @@ ifoldMap f = \case
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
 (#.) _f = coerce
 {-# INLINE (#.) #-}
+
+iwrite :: MVector s a -> Int -> Inner a -> ST s Int
+iwrite !mv !ix = \case
+  IEmpty -> pure ix
+  ICons x ys -> do
+    Data.Vector.Mutable.write mv ix x
+    iwrite mv (ix + 1) ys
+  ISnoc xs y -> do
+    ix' <- iwrite mv ix xs
+    Data.Vector.Mutable.write mv ix' y
+    pure (ix' + 1)
+  IVec v -> do
+    let n = Data.Vector.length v
+    let slice = Data.Vector.Mutable.slice ix n mv
+    Data.Vector.copy slice v
+    pure (ix + n)
+  IRev xs0 -> case xs0 of
+    IEmpty -> pure ix
+    ICons x ys -> do
+      ix' <- iwrite mv ix (IRev ys)
+      Data.Vector.Mutable.write mv ix' x
+      pure (ix' + 1)
+    ISnoc xs y -> do
+      Data.Vector.Mutable.write mv ix y
+      iwrite mv (ix + 1) (IRev xs)
+    IVec v -> do
+      let n = Data.Vector.length v
+      let slice = Data.Vector.Mutable.slice ix n mv
+      Data.Vector.copy slice (Data.Vector.reverse v)
+      pure (ix + n)
+    IRev xs -> iwrite mv ix xs
+    ICat xs ys -> do
+      ix' <- iwrite mv ix (IRev ys)
+      iwrite mv ix' (IRev xs)
+  ICat xs ys -> do
+    ix' <- iwrite mv ix xs
+    iwrite mv ix' ys
