@@ -30,6 +30,7 @@ module DhallList.Internal
   , foldr'
   , foldl'
   , traverse
+  , mapM
   , eqBy
   ) where
 
@@ -44,7 +45,7 @@ import Data.Vector (MVector)
 import GHC.Generics (Generic)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Syntax (Lift)
-import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap)
+import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap, mapM)
 
 import qualified Control.Applicative
 import qualified Data.Foldable
@@ -190,7 +191,7 @@ eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
 eqBy _ Empty Empty = True
 eqBy f xs ys =
       length xs == length ys
-      -- Some more laziness would be nice here…
+      -- TODO: Some more laziness would be nice here…
   &&  Data.Vector.Generic.eqBy f (toVector xs) (toVector ys)
 {-# inlinable eqBy #-}
 
@@ -306,6 +307,16 @@ traverse f = \case
   Vec v -> Vec <$> Data.Traversable.traverse f v
   x@Mud{} -> Vec <$> Data.Traversable.traverse f (toVector x)
 {-# inlinable traverse #-}
+
+-- | More efficient than @traverse@
+--
+-- The result is normalized.
+mapM :: Monad m => (a -> m b) -> DhallList a -> m (DhallList b)
+mapM f = \case
+  Empty -> pure Empty
+  One x -> One <$> f x
+  Vec v -> Vec <$> Data.Vector.mapM f v
+  x@Mud{} -> Vec <$> Data.Vector.mapM f (toVector x)
 
 -- TODO: Use foldr (:) [] to increase laziness?!
 toList :: DhallList a -> [a]

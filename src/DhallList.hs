@@ -23,6 +23,7 @@ module DhallList
   , foldr'
   , foldl'
   , traverse
+  , mapM
   , eqBy
   ) where
 
