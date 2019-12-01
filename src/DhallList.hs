@@ -19,6 +19,9 @@ module DhallList
   , map
   , mapWithIndex
   , mapM_withIndex
+  , foldMap
+  , foldr'
+  , foldl'
   , traverse
   , eqBy
   ) where

@@ -26,6 +26,9 @@ module DhallList.Internal
   , map
   , mapWithIndex
   , mapM_withIndex
+  , foldMap
+  , foldr'
+  , foldl'
   , traverse
   , eqBy
   ) where
@@ -97,6 +100,7 @@ instance Alternative DhallList where
 instance Foldable DhallList where
   foldMap = foldMap
   foldr' = foldr'
+  foldl' = foldl'
   toList = toList
   length = length
   null = null
@@ -252,12 +256,20 @@ foldMap f = \case
 {-# inlinable foldMap #-}
 
 foldr' :: (a -> b -> b) -> b -> DhallList a -> b
-foldr' f y = \case
+foldr' f !y = \case
   Empty -> y
   One x -> f x y
   Vec v -> Data.Vector.foldr' f y v
-  xs@Mud{} -> Data.Vector.foldr' f y (toVector xs) -- TODO: Avoid allocating the vector
+  Mud _ h xs l -> f h $! ifoldr' f (f l y) xs
 {-# inlinable foldr' #-}
+
+foldl' :: (b -> a -> b) -> b -> DhallList a -> b
+foldl' f !y = \case
+  Empty -> y
+  One x -> f y x
+  Vec v -> Data.Vector.foldl' f y v
+  Mud _ h xs l -> flip f l $! ifoldl' f (f y h) xs
+{-# inlinable foldl' #-}
 
 -- | The result is normalized!
 map :: (a -> b) -> DhallList a -> DhallList b
@@ -387,6 +399,26 @@ ifoldMap f = \case
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
 (#.) _f = coerce
 {-# INLINE (#.) #-}
+
+ifoldr' :: (a -> b -> b) -> b -> Inner a -> b
+ifoldr' f !y = \case
+  IEmpty -> y
+  ICons x xs -> f x $! ifoldr' f y xs
+  ISnoc xs x -> ifoldr' f (f x y) xs
+  IVec v -> Data.Vector.foldr' f y v
+  IRev xs -> ifoldl' (flip f) y xs
+  ICat xs0 xs1 -> ifoldr' f (ifoldr' f y xs1) xs0
+{-# inlinable ifoldr' #-}
+
+ifoldl' :: (b -> a -> b) -> b -> Inner a -> b
+ifoldl' f !y = \case
+  IEmpty -> y
+  ICons x xs -> ifoldl' f (f y x) xs
+  ISnoc xs x -> flip f x $! ifoldl' f y xs
+  IVec v -> Data.Vector.foldl' f y v
+  IRev xs -> ifoldr' (flip f) y xs
+  ICat xs0 xs1 -> ifoldl' f (ifoldl' f y xs0) xs1
+{-# inlinable ifoldl' #-}
 
 -- TODO: Prevent reboxing the Int somehow!?
 iwrite :: MVector s a -> Int -> Inner a -> ST s Int
