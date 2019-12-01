@@ -20,6 +20,7 @@ module DhallList
   , mapWithIndex
   , mapM_withIndex
   , foldMap
+  , foldr
   , foldr'
   , foldl'
   , traverse

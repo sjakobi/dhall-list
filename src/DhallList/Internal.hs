@@ -29,6 +29,7 @@ module DhallList.Internal
   , mapWithIndex
   , mapM_withIndex
   , foldMap
+  , foldr
   , foldr'
   , foldl'
   , traverse
@@ -48,7 +49,7 @@ import Data.Vector (MVector)
 import GHC.Generics (Generic)
 import Instances.TH.Lift ()
 import Language.Haskell.TH.Syntax (Lift)
-import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap, mapM)
+import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap, mapM, foldr)
 
 import qualified Control.Applicative
 import qualified Data.DList as DList
@@ -116,6 +117,7 @@ instance Alternative DhallList where
 -- TODO: Add foldl (for normalizeWithM)
 instance Foldable DhallList where
   foldMap = foldMap
+  foldr = foldr
   foldr' = foldr'
   foldl' = foldl'
   toList = toList
@@ -231,7 +233,7 @@ eqBy f (Mud sx hx xs lx) (Mud sy hy ys ly) =
       sx == sy
   &&  f hx hy
   &&  f lx ly
-  &&  eqByList f (Data.Foldable.toList xs) (Data.Foldable.toList ys) -- TODO: toList (++)s lists
+  &&  eqByList f (itoList xs) (itoList ys)
 {-# inlinable eqBy #-}
 
 eqByList :: (a -> b -> Bool) -> [a] -> [b] -> Bool
@@ -302,6 +304,14 @@ foldMap f = \case
   Mud _ a xs b -> f a <> ifoldMap f xs <> f b
 {-# inlinable foldMap #-}
 
+foldr :: (a -> b -> b) -> b -> DhallList a -> b
+foldr f y = \case
+  Empty -> y
+  One x -> f x y
+  Vec v -> Data.Vector.foldr f y v
+  Mud _ h xs l -> f h $ ifoldr f (f l y) xs
+{-# inlinable foldr #-}
+
 foldr' :: (a -> b -> b) -> b -> DhallList a -> b
 foldr' f !y = \case
   Empty -> y
@@ -363,6 +373,7 @@ mapM f = \case
   One x -> One <$> f x
   Vec v -> Vec <$> Data.Vector.mapM f v
   x@Mud{} -> Vec <$> Data.Vector.mapM f (toVector x)
+{-# inlinable mapM #-}
 
 toList :: DhallList a -> [a]
 toList = \case
@@ -405,11 +416,6 @@ data Inner a
   | ICat !(Inner a) !(Inner a)
   deriving (Show, Data, Generic, NFData, Lift)
 
-instance Foldable Inner where
-  foldMap = ifoldMap
-  foldr' = ifoldr'
-  foldl' = ifoldl'
-
 icons :: a -> Inner a -> Inner a
 -- icons x (IRev y) = IRev (ISnoc y x)
 icons x y = ICons x y
@@ -450,6 +456,7 @@ ifromVector v
   | otherwise = IVec v
 {-# inlinable ifromVector #-}
 
+-- TODO: Consider using itoDList / ifoldr?!
 ifoldMap :: Monoid m => (a -> m) -> Inner a -> m
 ifoldMap f = \case
   IEmpty -> mempty
@@ -464,6 +471,14 @@ ifoldMap f = \case
 (#.) _f = coerce
 {-# INLINE (#.) #-}
 
+ifoldr :: (a -> b -> b) -> b -> Inner a -> b
+ifoldr f y = \case
+  IEmpty -> y
+  IVec v -> Data.Vector.foldr f y v
+  xs -> DList.foldr f y (itoDList xs)
+{-# inlinable ifoldr #-}
+
+-- TODO: Consider using itoDList / ifoldr?!
 ifoldr' :: (a -> b -> b) -> b -> Inner a -> b
 ifoldr' f !y = \case
   IEmpty -> y
@@ -474,6 +489,7 @@ ifoldr' f !y = \case
   ICat xs0 xs1 -> ifoldr' f (ifoldr' f y xs1) xs0
 {-# inlinable ifoldr' #-}
 
+-- TODO: Consider using itoDList / ifoldr?!
 ifoldl' :: (b -> a -> b) -> b -> Inner a -> b
 ifoldl' f !y = \case
   IEmpty -> y
@@ -484,6 +500,14 @@ ifoldl' f !y = \case
   ICat xs0 xs1 -> ifoldl' f (ifoldl' f y xs0) xs1
 {-# inlinable ifoldl' #-}
 
+itoList :: Inner a -> [a]
+itoList = \case
+  IEmpty -> []
+  IVec v -> Data.Vector.toList v
+  xs -> DList.toList (itoDList xs)
+{-# inlinable itoList #-}
+
+-- TODO: Check that this is optimal
 itoDList :: Inner a -> DList a
 itoDList = \case
   IEmpty -> DList.empty
@@ -498,6 +522,7 @@ itoDList = \case
     IRev ys -> itoDList ys
     ICat xs0 xs1 -> itoDList (IRev xs1) <> itoDList (IRev xs0)
   ICat xs ys -> itoDList (xs) <> itoDList ys
+{-# inlinable itoDList #-}
 
 -- TODO: Prevent reboxing the Int somehow!?
 iwrite :: MVector s a -> Int -> Inner a -> ST s Int
