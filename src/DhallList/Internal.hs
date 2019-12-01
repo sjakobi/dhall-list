@@ -31,7 +31,6 @@ module DhallList.Internal
 
 -- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
 -- TODO: Use unsafe Vector operations
--- TODO: Optimize Inner operations based on size of Mud
 
 import Control.Applicative (Alternative)
 import Control.DeepSeq (NFData)
@@ -319,18 +318,22 @@ iglue as b c ds = case as of
     _ -> as `ICat` (b `ICons` (c `ICons` ds))
 {-# inline iglue #-}
 
--- TODO: Consider doing some normalization?!
 icatVecs :: Vector a -> Vector a -> Inner a
-icatVecs xs ys = ICat (IVec xs) (IVec ys)
+icatVecs xs ys
+  | Data.Vector.null xs = ifromVector ys
+  | Data.Vector.null ys = ifromVector xs
+  | otherwise = ICat (IVec xs) (IVec ys)
 
 ireverse :: Inner a -> Inner a
-ireverse x0 = case x0 of
-  IEmpty -> IEmpty
+ireverse = \case
+  IEmpty  -> IEmpty
   IRev xs -> xs
-  _      -> IRev x0
+  xs      -> IRev xs
 
 ifromVector :: Vector a -> Inner a
-ifromVector = IVec
+ifromVector v
+  | Data.Vector.null v = IEmpty
+  | otherwise = IVec v
 
 ifoldMap :: Monoid m => (a -> m) -> Inner a -> m
 ifoldMap f = \case
