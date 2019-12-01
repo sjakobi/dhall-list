@@ -53,7 +53,6 @@ import qualified Control.Applicative
 import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
-import qualified Data.Vector.Generic
 import qualified Data.Vector.Mutable
 
 data DhallList a
@@ -200,10 +199,11 @@ append x0 = case x0 of
 
 eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
 eqBy _ Empty Empty = True
-eqBy f xs ys =
-      length xs == length ys
-      -- TODO: Some more laziness would be nice here…
-  &&  Data.Vector.Generic.eqBy f (toVector xs) (toVector ys)
+eqBy f xs ys = length xs == length ys && eqByList (toList xs) (toList ys)
+  where
+    eqByList [] [] = True
+    eqByList (x:xs') (y:ys') = f x y && eqByList xs' ys'
+    eqByList _ _ = False
 {-# inlinable eqBy #-}
 
 reverse :: DhallList a -> DhallList a
@@ -330,13 +330,12 @@ mapM f = \case
   Vec v -> Vec <$> Data.Vector.mapM f v
   x@Mud{} -> Vec <$> Data.Vector.mapM f (toVector x)
 
--- TODO: Use foldr (:) [] to increase laziness?!
 toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
   One a -> [a]
   Vec v -> Data.Vector.toList v
-  x@Mud{} -> Data.Vector.toList (toVector x)
+  x@Mud{} -> foldr (:) [] x
 {-# inlinable toList #-}
 
 toVector :: DhallList a -> Vector a
