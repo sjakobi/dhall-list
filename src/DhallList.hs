@@ -4,6 +4,7 @@ module DhallList
   , empty
   , singleton
   , fromList
+  , fromListN
   , fromVector
   , replicateM
   , toList
@@ -19,6 +20,7 @@ module DhallList
   , mapWithIndex
   , mapM_withIndex
   , traverse
+  , eqBy
   ) where
 
 import DhallList.Internal

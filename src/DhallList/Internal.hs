@@ -27,6 +27,7 @@ module DhallList.Internal
   , mapWithIndex
   , mapM_withIndex
   , traverse
+  , eqBy
   ) where
 
 -- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
@@ -49,6 +50,7 @@ import qualified Control.Applicative
 import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
+import qualified Data.Vector.Generic
 import qualified Data.Vector.Mutable
 
 data DhallList a
@@ -112,6 +114,8 @@ fromList = \case
   [x] -> singleton x
   xs -> Vec (Data.Vector.fromList xs)
 
+-- TODO: I thought this would help vector allocate the right amount of memory,
+-- but maybe it doesn't – I should check…
 fromListN :: Int -> [a] -> DhallList a
 fromListN n xs
   | n <= 0 = empty
@@ -174,6 +178,12 @@ append x0 = case x0 of
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inline append #-}
 
+-- TODO: Add special cases for Empty, One etc?
+eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
+eqBy f xs ys =
+      length xs /= length ys
+  &&  Data.Vector.Generic.eqBy f (toVector xs) (toVector ys)
+
 reverse :: DhallList a -> DhallList a
 reverse = \case
   Empty -> Empty
@@ -218,7 +228,7 @@ uncons :: DhallList a -> Maybe (a, DhallList a)
 uncons = \case
   Empty -> Nothing
   One x -> Just (x, Empty)
-  Vec v -> Just (Data.Vector.head v, Vec (Data.Vector.tail v))
+  Vec v -> Just (Data.Vector.head v, fromVector (Data.Vector.tail v))
   x@(Mud _ h _ _) -> Just (h, Vec (Data.Vector.tail (toVector x)))
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
