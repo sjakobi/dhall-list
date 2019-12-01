@@ -521,7 +521,7 @@ itoDList = \case
     IVec v -> Data.Vector.foldr (flip DList.snoc) DList.empty v
     IRev ys -> itoDList ys
     ICat xs0 xs1 -> itoDList (IRev xs1) <> itoDList (IRev xs0)
-  ICat xs ys -> itoDList (xs) <> itoDList ys
+  ICat xs ys -> itoDList xs <> itoDList ys
 {-# inlinable itoDList #-}
 
 -- TODO: Prevent reboxing the Int somehow!?
