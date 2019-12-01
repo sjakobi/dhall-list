@@ -30,8 +30,6 @@ module DhallList.Internal
   , eqBy
   ) where
 
--- TODO: Use unsafe Vector operations
-
 import Control.Applicative (Alternative)
 import Control.DeepSeq (NFData)
 import Control.Monad.ST (ST)
@@ -150,28 +148,28 @@ append x0 = case x0 of
       Mud
         (Data.Vector.length vy + 1)
         x
-        (ifromVector (Data.Vector.init vy))
-        (Data.Vector.last vy)
+        (ifromVector (Data.Vector.unsafeInit vy))
+        (Data.Vector.unsafeLast vy)
     Mud sy hy ys ly -> Mud (sy + 1) x (icons hy ys) ly
   Vec vx -> \case
     Empty -> x0
     One y ->
       Mud
         (Data.Vector.length vx + 1)
-        (Data.Vector.head vx)
-        (ifromVector (Data.Vector.tail vx))
+        (Data.Vector.unsafeHead vx)
+        (ifromVector (Data.Vector.unsafeTail vx))
         y
     Vec vy ->
       Mud
         (Data.Vector.length vx + Data.Vector.length vy)
-        (Data.Vector.head vx)
-        (icatVecs (Data.Vector.tail vx) (Data.Vector.init vy))
-        (Data.Vector.last vy)
+        (Data.Vector.unsafeHead vx)
+        (icatVecs (Data.Vector.unsafeTail vx) (Data.Vector.unsafeInit vy))
+        (Data.Vector.unsafeLast vy)
     Mud sy hy ys ly ->
       Mud
         (Data.Vector.length vx + sy)
-        (Data.Vector.head vx)
-        (ICat (IVec (Data.Vector.tail vx)) (icons hy ys)) -- TODO: Maybe optimize using sy
+        (Data.Vector.unsafeHead vx)
+        (ICat (IVec (Data.Vector.unsafeTail vx)) (icons hy ys)) -- TODO: Maybe optimize using sy
         ly
   Mud sx hx xs lx -> \case
     Empty -> x0
@@ -180,15 +178,15 @@ append x0 = case x0 of
       Mud
         (sx + Data.Vector.length vy)
         hx
-        (ICat (isnoc xs lx) (IVec (Data.Vector.init vy)))
-        (Data.Vector.last vy)
+        (ICat (isnoc xs lx) (IVec (Data.Vector.unsafeInit vy)))
+        (Data.Vector.unsafeLast vy)
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inlinable append #-}
 
 -- TODO: Add special cases for Empty, One etc?
 eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
 eqBy f xs ys =
-      length xs /= length ys
+      length xs == length ys
   &&  Data.Vector.Generic.eqBy f (toVector xs) (toVector ys)
 {-# inlinable eqBy #-}
 
@@ -197,13 +195,13 @@ reverse = \case
   Empty -> Empty
   x@One{} -> x
   Vec v -> case Data.Vector.length v of
-    1 -> singleton (Data.Vector.head v)
+    1 -> singleton (Data.Vector.unsafeHead v)
     n ->
       Mud
         n
-        (Data.Vector.last v)
-        (ireverse (ifromVector (Data.Vector.init (Data.Vector.tail v))))
-        (Data.Vector.head v)
+        (Data.Vector.unsafeLast v)
+        (ireverse (ifromVector (Data.Vector.unsafeInit (Data.Vector.unsafeTail v))))
+        (Data.Vector.unsafeHead v)
   Mud s h xs l -> Mud s l (ireverse xs) h
 {-# inlinable reverse #-}
 
@@ -225,7 +223,7 @@ head :: DhallList a -> Maybe a
 head = \case
   Empty -> Nothing
   One x -> Just x
-  Vec v -> Just (Data.Vector.head v)
+  Vec v -> Just (Data.Vector.unsafeHead v)
   Mud _ x _ _ -> Just x
 {-# inlinable head #-}
 
@@ -233,7 +231,7 @@ last :: DhallList a -> Maybe a
 last = \case
   Empty -> Nothing
   One x -> Just x
-  Vec v -> Just (Data.Vector.last v)
+  Vec v -> Just (Data.Vector.unsafeLast v)
   Mud _ _ _ x -> Just x
 {-# inlinable last #-}
 
@@ -241,8 +239,8 @@ uncons :: DhallList a -> Maybe (a, DhallList a)
 uncons = \case
   Empty -> Nothing
   One x -> Just (x, Empty)
-  Vec v -> Just (Data.Vector.head v, fromVector (Data.Vector.tail v))
-  x@(Mud _ h _ _) -> Just (h, Vec (Data.Vector.tail (toVector x)))
+  Vec v -> Just (Data.Vector.unsafeHead v, fromVector (Data.Vector.unsafeTail v))
+  x@(Mud _ h _ _) -> Just (h, Vec (Data.Vector.unsafeTail (toVector x)))
 {-# inlinable uncons #-}
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
@@ -285,7 +283,7 @@ mapM_withIndex f = \case
   Empty -> pure ()
   One x -> f 0 x
   Vec v -> Data.Vector.imapM_ f v
-  x@Mud{} -> Data.Vector.imapM_ f (toVector x)
+  x@Mud{} -> Data.Vector.imapM_ f (toVector x) -- TODO: Avoid the allocation?
 {-# inlinable mapM_withIndex #-}
 
 -- | The result is normalized!
@@ -317,11 +315,11 @@ mudToVector :: Int -> a -> Inner a -> a -> Vector a
 mudToVector n h xs l
   | n == 2 = Data.Vector.fromListN 2 [h, l]
   | otherwise = Data.Vector.create $ do
-      v <- Data.Vector.Mutable.new n
-      Data.Vector.Mutable.write v 0 h
+      v <- Data.Vector.Mutable.unsafeNew n -- Too unsafe?
+      Data.Vector.Mutable.unsafeWrite v 0 h
       !ix <- iwrite v 1 xs
       -- assert (ix == n - 1)
-      Data.Vector.Mutable.write v ix l
+      Data.Vector.Mutable.unsafeWrite v ix l
       pure v
 {-# inlinable mudToVector #-}
 
@@ -395,30 +393,30 @@ iwrite :: MVector s a -> Int -> Inner a -> ST s Int
 iwrite !mv !ix = \case
   IEmpty -> pure ix
   ICons x ys -> do
-    Data.Vector.Mutable.write mv ix x
+    Data.Vector.Mutable.unsafeWrite mv ix x
     iwrite mv (ix + 1) ys
   ISnoc xs y -> do
     !ix' <- iwrite mv ix xs
-    Data.Vector.Mutable.write mv ix' y
+    Data.Vector.Mutable.unsafeWrite mv ix' y
     pure $! ix' + 1
   IVec v -> do
     let !n = Data.Vector.length v
-    let slice = Data.Vector.Mutable.slice ix n mv
-    Data.Vector.copy slice v
+    let slice = Data.Vector.Mutable.unsafeSlice ix n mv
+    Data.Vector.unsafeCopy slice v
     pure $! ix + n
   IRev xs0 -> case xs0 of
     IEmpty -> pure ix
     ICons x ys -> do
       !ix' <- iwrite mv ix (IRev ys)
-      Data.Vector.Mutable.write mv ix' x
+      Data.Vector.Mutable.unsafeWrite mv ix' x
       pure $! ix' + 1
     ISnoc xs y -> do
-      Data.Vector.Mutable.write mv ix y
+      Data.Vector.Mutable.unsafeWrite mv ix y
       iwrite mv (ix + 1) (IRev xs)
     IVec v -> do
       let !n = Data.Vector.length v
-      let slice = Data.Vector.Mutable.slice ix n mv
-      Data.Vector.copy slice (Data.Vector.reverse v)
+      let slice = Data.Vector.Mutable.unsafeSlice ix n mv
+      Data.Vector.unsafeCopy slice (Data.Vector.reverse v)
       pure $! ix + n
     IRev xs -> iwrite mv ix xs
     ICat xs ys -> do
