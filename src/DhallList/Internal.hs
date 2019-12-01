@@ -485,7 +485,13 @@ ifoldr' f !y = \case
   ICons x xs -> f x $! ifoldr' f y xs
   ISnoc xs x -> ifoldr' f (f x y) xs
   IVec v -> Vector.foldr' f y v
-  IRev xs -> ifoldl' (flip f) y xs
+  IRev xs -> case xs of
+    IEmpty -> y
+    ICons z zs -> ifoldr' f (f z y) (IRev zs)
+    ISnoc zs z -> f z $! ifoldr' f y (IRev zs)
+    IVec v -> Vector.foldl' (flip f) y v
+    IRev zs -> ifoldr' f y zs
+    ICat zs0 zs1 -> ifoldr' f (ifoldr' f y (IRev zs0)) (IRev zs1)
   ICat xs0 xs1 -> ifoldr' f (ifoldr' f y xs1) xs0
 {-# inlinable ifoldr' #-}
 
