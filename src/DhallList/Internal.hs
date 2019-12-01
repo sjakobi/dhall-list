@@ -62,8 +62,7 @@ data DhallList a
   deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
-  -- TODO: Define as @eqBy (==)@
-  xs == ys = length xs == length ys && toList xs == toList ys
+  xs == ys = eqBy (==)
 
 instance Ord a => Ord (DhallList a) where
   -- TODO: Optimize
