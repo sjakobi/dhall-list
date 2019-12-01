@@ -34,7 +34,7 @@ module DhallList.Internal
 
 import Control.Applicative (Alternative)
 import Control.DeepSeq (NFData)
-import Control.Monad.ST (ST, runST)
+import Control.Monad.ST (ST)
 import Data.Coerce (Coercible, coerce)
 import Data.Data (Data)
 import Data.Monoid (Dual(..))
@@ -279,6 +279,7 @@ mapWithIndex f = \case
   x@Mud{} -> Vec (Data.Vector.imap f (toVector x))
 {-# inlinable mapWithIndex #-}
 
+-- TODO: Specialize for Either
 mapM_withIndex :: Monad m => (Int -> a -> m ()) -> DhallList a -> m ()
 mapM_withIndex f = \case
   Empty -> pure ()
@@ -315,13 +316,13 @@ toVector = \case
 mudToVector :: Int -> a -> Inner a -> a -> Vector a
 mudToVector n h xs l
   | n == 2 = Data.Vector.fromListN 2 [h, l]
-  | otherwise = runST $ do
+  | otherwise = Data.Vector.create $ do
       v <- Data.Vector.Mutable.new n
       Data.Vector.Mutable.write v 0 h
       !ix <- iwrite v 1 xs
       -- assert (ix == n - 1)
       Data.Vector.Mutable.write v ix l
-      Data.Vector.freeze v
+      pure v
 {-# inlinable mudToVector #-}
 
 -- TODO: Consider having IRev contain a vector, to simplify folds and traversals
