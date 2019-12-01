@@ -56,7 +56,7 @@ import qualified Data.Vector.Mutable
 
 data DhallList a
   = Empty
-  | One a -- TODO: Consider removing
+  | One a -- Optimization for List/build
   | Vec {-# unpack #-} !(Vector a)
     -- ^ Invariant: Non-empty
   | Mud {-# unpack #-} !Int a !(Inner a) a
