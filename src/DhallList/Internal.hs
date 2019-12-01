@@ -97,8 +97,10 @@ instance Applicative DhallList where
   {-# inline (<*>) #-}
 
 instance Monad DhallList where
-  -- TODO: Optimize?
-  xs >>= f = fromVector (toVector xs >>= toVector . f)
+  xs0 >>= f = case xs0 of
+    Empty -> Empty
+    One x -> f x
+    xs -> fromVector (toVector xs >>= toVector . f)
   {-# inline (>>=) #-}
 
 instance Alternative DhallList where
