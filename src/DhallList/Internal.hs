@@ -169,7 +169,7 @@ append x0 = case x0 of
       Mud
         (Data.Vector.length vx + sy)
         (Data.Vector.unsafeHead vx)
-        (ICat (IVec (Data.Vector.unsafeTail vx)) (icons hy ys)) -- TODO: Maybe optimize using sy
+        (ICat (ifromVector (Data.Vector.unsafeTail vx)) (icons hy ys))
         ly
   Mud sx hx xs lx -> \case
     Empty -> x0
@@ -178,7 +178,7 @@ append x0 = case x0 of
       Mud
         (sx + Data.Vector.length vy)
         hx
-        (ICat (isnoc xs lx) (IVec (Data.Vector.unsafeInit vy)))
+        (ICat (isnoc xs lx) (ifromVector (Data.Vector.unsafeInit vy)))
         (Data.Vector.unsafeLast vy)
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inlinable append #-}
