@@ -24,13 +24,13 @@ module DhallList.Internal
   , last
   , map
   , mapWithIndex
+  , mapM_withIndex
   , traverse
   ) where
 
 -- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
 -- TODO: Use unsafe Vector operations
 -- TODO: Optimize Inner operations based on size of Mud
--- TODO: Add a mapMWithIndex_ or mapM_withIndex that can be built on top of Data.Vector.imapM_
 -- TODO: Add uncons / tail
 
 import Control.Applicative (Alternative)
@@ -224,6 +224,15 @@ foldMap f = \case
 {-# inline foldMap #-}
 
 -- | The result is normalized!
+map :: (a -> b) -> DhallList a -> DhallList b
+map f = \case
+  Empty -> Empty
+  One x -> One (f x)
+  Vec v -> Vec (Data.Vector.map f v)
+  x@Mud{} -> Vec (Data.Vector.map f (toVector x))
+{-# inline map #-}
+
+-- | The result is normalized!
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
 mapWithIndex f = \case
   Empty -> empty
@@ -232,14 +241,12 @@ mapWithIndex f = \case
   x@Mud{} -> Vec (Data.Vector.imap f (toVector x))
 {-# inline mapWithIndex #-}
 
--- | The result is normalized!
-map :: (a -> b) -> DhallList a -> DhallList b
-map f = \case
-  Empty -> Empty
-  One x -> One (f x)
-  Vec v -> Vec (Data.Vector.map f v)
-  x@Mud{} -> Vec (Data.Vector.map f (toVector x))
-{-# inline map #-}
+mapM_withIndex :: Monad m => (Int -> a -> m ()) -> DhallList a -> m ()
+mapM_withIndex f = \case
+  Empty -> pure ()
+  One x -> f 0 x
+  Vec v -> Data.Vector.imapM_ f v
+  x@Mud{} -> Data.Vector.imapM_ f (toVector x)
 
 -- | The result is normalized!
 traverse :: Applicative f => (a -> f b) -> DhallList a -> f (DhallList b)

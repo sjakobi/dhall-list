@@ -16,6 +16,7 @@ module DhallList
   , last
   , map
   , mapWithIndex
+  , mapM_withIndex
   , traverse
   ) where
 
