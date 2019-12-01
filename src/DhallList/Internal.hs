@@ -53,6 +53,7 @@ import qualified Control.Applicative
 import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
+import qualified Data.Vector.Generic
 import qualified Data.Vector.Mutable
 
 data DhallList a
@@ -199,12 +200,38 @@ append x0 = case x0 of
 
 eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
 eqBy _ Empty Empty = True
-eqBy f xs ys = length xs == length ys && eqByList (toList xs) (toList ys)
-  where
-    eqByList [] [] = True
-    eqByList (x:xs') (y:ys') = f x y && eqByList xs' ys'
-    eqByList _ _ = False
+eqBy _ Empty _ = False
+eqBy _ One{} Empty = False
+eqBy f (One x) (One y) = f x y
+eqBy _ One{} Mud{} = False
+eqBy f (One x) (Vec vy)
+  | Data.Vector.length vy == 1 = f x (Data.Vector.unsafeHead vy)
+  | otherwise = False
+eqBy _ Vec{} Empty = False -- Vec must be non-empty
+eqBy f (Vec vx) (One y)
+  | Data.Vector.length vx == 1 = f (Data.Vector.unsafeHead vx) y
+  | otherwise = False
+eqBy f (Vec vx) (Vec vy) = Data.Vector.Generic.eqBy f vx vy
+eqBy f (Vec vx) (Mud sy hy ys ly) -- TODO: There's more potential for optimization here
+  | Data.Vector.length vx == sy = Data.Vector.Generic.eqBy f vx (mudToVector sy hy ys ly)
+  | otherwise = False
+eqBy _ Mud{} Empty = False
+eqBy _ Mud{} One{} = False
+eqBy f (Mud sx hx xs lx) (Vec vy) -- TODO: There's more potential for optimization here
+  | sx == Data.Vector.length vy = Data.Vector.Generic.eqBy f (mudToVector sx hx xs lx) vy
+  | otherwise = False
+eqBy f (Mud sx hx xs lx) (Mud sy hy ys ly) =
+      sx == sy
+  &&  f hx hy
+  &&  f lx ly
+  &&  eqByList f (Data.Foldable.toList xs) (Data.Foldable.toList ys) -- TODO: toList (++)s lists…
 {-# inlinable eqBy #-}
+
+eqByList :: (a -> b -> Bool) -> [a] -> [b] -> Bool
+eqByList _ [] [] = True
+eqByList f (x:xs') (y:ys') = f x y && eqByList f xs' ys'
+eqByList _ _ _ = False
+{-# inlinable eqByList #-}
 
 reverse :: DhallList a -> DhallList a
 reverse = \case
@@ -368,6 +395,11 @@ data Inner a
   | IRev !(Inner a)
   | ICat !(Inner a) !(Inner a)
   deriving (Show, Data, Generic, NFData, Lift)
+
+instance Foldable Inner where
+  foldMap = ifoldMap
+  foldr' = ifoldr'
+  foldl' = ifoldl'
 
 icons :: a -> Inner a -> Inner a
 -- icons x (IRev y) = IRev (ISnoc y x)
