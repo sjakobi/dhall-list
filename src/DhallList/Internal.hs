@@ -307,6 +307,7 @@ traverse f = \case
   x@Mud{} -> Vec <$> Data.Traversable.traverse f (toVector x)
 {-# inlinable traverse #-}
 
+-- TODO: Use foldr (:) [] to increase laziness?!
 toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
