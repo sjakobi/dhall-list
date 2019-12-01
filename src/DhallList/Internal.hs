@@ -132,8 +132,6 @@ fromList = \case
   xs -> Vec (Data.Vector.fromList xs)
 {-# inlinable fromList #-}
 
--- TODO: I thought this would help vector allocate the right amount of memory,
--- but maybe it doesn't – I should check…
 fromListN :: Int -> [a] -> DhallList a
 fromListN n xs
   | n <= 0 = empty
@@ -158,7 +156,7 @@ append x0 = case x0 of
   Empty -> id
   One x -> \case
     Empty -> x0
-    One y -> Vec (Data.Vector.fromListN 2 [x, y]) -- TODO: Check Core
+    One y -> Vec (Data.Vector.fromListN 2 [x, y])
     Vec vy ->
       Mud
         (Data.Vector.length vy + 1)
@@ -211,6 +209,7 @@ reverse = \case
   Empty -> Empty
   x@One{} -> x
   Vec v -> case Data.Vector.length v of
+    0 -> Empty -- This should never happen, but better be safe
     1 -> singleton (Data.Vector.unsafeHead v)
     n ->
       Mud
@@ -350,7 +349,7 @@ mudToVector :: Int -> a -> Inner a -> a -> Vector a
 mudToVector n h xs l
   | n == 2 = Data.Vector.fromListN 2 [h, l]
   | otherwise = Data.Vector.create $ do
-      v <- Data.Vector.Mutable.unsafeNew n -- Too unsafe?
+      v <- Data.Vector.Mutable.new n -- TODO: Maybe consider using unsafeNew?!
       Data.Vector.Mutable.unsafeWrite v 0 h
       !ix <- iwrite v 1 xs
       -- assert (ix == n - 1)
@@ -370,13 +369,13 @@ data Inner a
   deriving (Show, Data, Generic, NFData, Lift)
 
 icons :: a -> Inner a -> Inner a
-icons x (IRev y) = IRev (ISnoc y x) -- TODO: Maybe reconsider this optimization
+-- icons x (IRev y) = IRev (ISnoc y x)
 icons x y = ICons x y
 {-# inlinable icons #-}
 
 isnoc :: Inner a -> a -> Inner a
 isnoc IEmpty y = ICons y IEmpty -- Prefer ICons! Why though?
-isnoc (IRev x) y = IRev (ICons y x) -- TODO: Maybe reconsider this optimization
+-- isnoc (IRev x) y = IRev (ICons y x)
 isnoc x y = ISnoc x y
 {-# inlinable isnoc #-}
 
