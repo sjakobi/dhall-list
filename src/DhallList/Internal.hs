@@ -95,6 +95,7 @@ instance Applicative DhallList where
       as@Mud{} -> Vec (fs <*> toVector as)
     fs@Mud{} -> case as0 of
       Empty -> Empty
+      One a -> Vec (fmap ($ a) (toVector fs))
       as -> Vec (toVector fs <*> toVector as)
   {-# inline (<*>) #-}
 
@@ -198,6 +199,7 @@ append x0 = case x0 of
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inlinable append #-}
 
+-- TODO: This could be even more efficient if we had ieqBy
 eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
 eqBy _ Empty Empty = True
 eqBy _ Empty _ = False
@@ -211,7 +213,9 @@ eqBy _ Vec{} Empty = False -- Vec must be non-empty
 eqBy f (Vec vx) (One y)
   | Data.Vector.length vx == 1 = f (Data.Vector.unsafeHead vx) y
   | otherwise = False
-eqBy f (Vec vx) (Vec vy) = Data.Vector.Generic.eqBy f vx vy
+eqBy f (Vec vx) (Vec vy)
+  | Data.Vector.length vx == Data.Vector.length vy = Data.Vector.Generic.eqBy f vx vy
+  | otherwise = False
 eqBy f (Vec vx) (Mud sy hy ys ly) -- TODO: There's more potential for optimization here
   | Data.Vector.length vx == sy = Data.Vector.Generic.eqBy f vx (mudToVector sy hy ys ly)
   | otherwise = False
@@ -224,7 +228,7 @@ eqBy f (Mud sx hx xs lx) (Mud sy hy ys ly) =
       sx == sy
   &&  f hx hy
   &&  f lx ly
-  &&  eqByList f (Data.Foldable.toList xs) (Data.Foldable.toList ys) -- TODO: toList (++)s lists…
+  &&  eqByList f (Data.Foldable.toList xs) (Data.Foldable.toList ys) -- TODO: toList (++)s lists
 {-# inlinable eqBy #-}
 
 eqByList :: (a -> b -> Bool) -> [a] -> [b] -> Bool
