@@ -83,12 +83,12 @@ instance Applicative DhallList where
   pure = singleton
 
   -- TODO: Optimize?
-  xs <*> ys = fromListN (length xs * length ys) (toList xs <*> toList ys)
+  xs <*> ys = fromVector (toVector xs <*> toVector ys)
   {-# inline (<*>) #-}
 
 instance Monad DhallList where
-  -- TODO: Optimize? Use Vector instead of list?
-  xs >>= f = fromList (toList xs >>= toList . f)
+  -- TODO: Optimize?
+  xs >>= f = fromVector (toVector xs >>= toVector . f)
   {-# inline (>>=) #-}
 
 instance Alternative DhallList where
