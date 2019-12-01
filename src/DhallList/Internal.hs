@@ -93,8 +93,10 @@ instance Alternative DhallList where
   (<|>) = append
 
 -- TODO: Add foldr' (needed for Dhall.Eval)
+-- TODO: Add foldl (for normalizeWithM)
 instance Foldable DhallList where
   foldMap = foldMap
+  foldr' = foldr'
   toList = toList
   length = length
   null = null
@@ -238,6 +240,13 @@ foldMap f = \case
   Vec v -> Data.Foldable.foldMap f v
   Mud _ a xs b -> f a <> ifoldMap f xs <> f b
 {-# inline foldMap #-}
+
+foldr' :: (a -> b -> b) -> b -> DhallList a -> b
+foldr' f y = \case
+  Empty -> y
+  One x -> f x y
+  Vec v -> Data.Vector.foldr' f y v
+  xs@Mud{} -> Data.Vector.foldr' f y (toVector xs) -- TODO: Avoid allocating the vector
 
 -- | The result is normalized!
 map :: (a -> b) -> DhallList a -> DhallList b
