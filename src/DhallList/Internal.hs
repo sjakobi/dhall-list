@@ -55,9 +55,9 @@ import qualified Control.Applicative
 import qualified Data.DList as DList
 import qualified Data.Foldable
 import qualified Data.Traversable
-import qualified Data.Vector
-import qualified Data.Vector.Generic
-import qualified Data.Vector.Mutable
+import qualified Data.Vector as Vector
+import qualified Data.Vector.Generic as Vector.Generic
+import qualified Data.Vector.Mutable as Vector.Mutable
 
 data DhallList a
   = Empty
@@ -137,18 +137,18 @@ fromList :: [a] -> DhallList a
 fromList = \case
   [] -> empty
   [x] -> singleton x
-  xs -> Vec (Data.Vector.fromList xs)
+  xs -> Vec (Vector.fromList xs)
 {-# inlinable fromList #-}
 
 fromListN :: Int -> [a] -> DhallList a
 fromListN n xs
   | n <= 0 = empty
-  | otherwise = Vec (Data.Vector.fromListN n xs)
+  | otherwise = Vec (Vector.fromListN n xs)
 {-# inlinable fromListN #-}
 
 fromVector :: Vector a -> DhallList a
 fromVector v
-  | Data.Vector.null v = Empty
+  | Vector.null v = Empty
   | otherwise = Vec v
 {-# inlinable fromVector #-}
 
@@ -156,7 +156,7 @@ replicateM :: Monad m => Int -> m a -> m (DhallList a)
 replicateM n0 m = case n0 of
   n | n <= 0 -> pure empty
   1 -> singleton <$> m
-  n -> Vec <$> Data.Vector.replicateM n m
+  n -> Vec <$> Vector.replicateM n m
 {-# inlinable replicateM #-}
 
 append :: DhallList a -> DhallList a -> DhallList a
@@ -164,43 +164,43 @@ append x0 = case x0 of
   Empty -> id
   One x -> \case
     Empty -> x0
-    One y -> Vec (Data.Vector.fromListN 2 [x, y])
+    One y -> Vec (Vector.fromListN 2 [x, y])
     Vec vy ->
       Mud
-        (Data.Vector.length vy + 1)
+        (Vector.length vy + 1)
         x
-        (ifromVector (Data.Vector.unsafeInit vy))
-        (Data.Vector.unsafeLast vy)
+        (ifromVector (Vector.unsafeInit vy))
+        (Vector.unsafeLast vy)
     Mud sy hy ys ly -> Mud (sy + 1) x (icons hy ys) ly
   Vec vx -> \case
     Empty -> x0
     One y ->
       Mud
-        (Data.Vector.length vx + 1)
-        (Data.Vector.unsafeHead vx)
-        (ifromVector (Data.Vector.unsafeTail vx))
+        (Vector.length vx + 1)
+        (Vector.unsafeHead vx)
+        (ifromVector (Vector.unsafeTail vx))
         y
     Vec vy ->
       Mud
-        (Data.Vector.length vx + Data.Vector.length vy)
-        (Data.Vector.unsafeHead vx)
-        (icatVecs (Data.Vector.unsafeTail vx) (Data.Vector.unsafeInit vy))
-        (Data.Vector.unsafeLast vy)
+        (Vector.length vx + Vector.length vy)
+        (Vector.unsafeHead vx)
+        (icatVecs (Vector.unsafeTail vx) (Vector.unsafeInit vy))
+        (Vector.unsafeLast vy)
     Mud sy hy ys ly ->
       Mud
-        (Data.Vector.length vx + sy)
-        (Data.Vector.unsafeHead vx)
-        (ICat (ifromVector (Data.Vector.unsafeTail vx)) (icons hy ys))
+        (Vector.length vx + sy)
+        (Vector.unsafeHead vx)
+        (ICat (ifromVector (Vector.unsafeTail vx)) (icons hy ys))
         ly
   Mud sx hx xs lx -> \case
     Empty -> x0
     One y -> Mud (sx + 1) hx (isnoc xs lx) y
     Vec vy ->
       Mud
-        (sx + Data.Vector.length vy)
+        (sx + Vector.length vy)
         hx
-        (ICat (isnoc xs lx) (ifromVector (Data.Vector.unsafeInit vy)))
-        (Data.Vector.unsafeLast vy)
+        (ICat (isnoc xs lx) (ifromVector (Vector.unsafeInit vy)))
+        (Vector.unsafeLast vy)
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
 {-# inlinable append #-}
 
@@ -212,22 +212,22 @@ eqBy _ One{} Empty = False
 eqBy f (One x) (One y) = f x y
 eqBy _ One{} Mud{} = False
 eqBy f (One x) (Vec vy)
-  | Data.Vector.length vy == 1 = f x (Data.Vector.unsafeHead vy)
+  | Vector.length vy == 1 = f x (Vector.unsafeHead vy)
   | otherwise = False
 eqBy _ Vec{} Empty = False -- Vec must be non-empty
 eqBy f (Vec vx) (One y)
-  | Data.Vector.length vx == 1 = f (Data.Vector.unsafeHead vx) y
+  | Vector.length vx == 1 = f (Vector.unsafeHead vx) y
   | otherwise = False
 eqBy f (Vec vx) (Vec vy)
-  | Data.Vector.length vx == Data.Vector.length vy = Data.Vector.Generic.eqBy f vx vy
+  | Vector.length vx == Vector.length vy = Vector.Generic.eqBy f vx vy
   | otherwise = False
 eqBy f (Vec vx) (Mud sy hy ys ly) -- TODO: There's more potential for optimization here
-  | Data.Vector.length vx == sy = Data.Vector.Generic.eqBy f vx (mudToVector sy hy ys ly)
+  | Vector.length vx == sy = Vector.Generic.eqBy f vx (mudToVector sy hy ys ly)
   | otherwise = False
 eqBy _ Mud{} Empty = False
 eqBy _ Mud{} One{} = False
 eqBy f (Mud sx hx xs lx) (Vec vy) -- TODO: There's more potential for optimization here
-  | sx == Data.Vector.length vy = Data.Vector.Generic.eqBy f (mudToVector sx hx xs lx) vy
+  | sx == Vector.length vy = Vector.Generic.eqBy f (mudToVector sx hx xs lx) vy
   | otherwise = False
 eqBy f (Mud sx hx xs lx) (Mud sy hy ys ly) =
       sx == sy
@@ -246,15 +246,15 @@ reverse :: DhallList a -> DhallList a
 reverse = \case
   Empty -> Empty
   x@One{} -> x
-  Vec v -> case Data.Vector.length v of
+  Vec v -> case Vector.length v of
     0 -> Empty -- This should never happen, but better be safe
-    1 -> singleton (Data.Vector.unsafeHead v)
+    1 -> singleton (Vector.unsafeHead v)
     n ->
       Mud
         n
-        (Data.Vector.unsafeLast v)
-        (ireverse (ifromVector (Data.Vector.unsafeInit (Data.Vector.unsafeTail v))))
-        (Data.Vector.unsafeHead v)
+        (Vector.unsafeLast v)
+        (ireverse (ifromVector (Vector.unsafeInit (Vector.unsafeTail v))))
+        (Vector.unsafeHead v)
   Mud s h xs l -> Mud s l (ireverse xs) h
 {-# inlinable reverse #-}
 
@@ -262,7 +262,7 @@ length :: DhallList a -> Int
 length = \case
   Empty -> 0
   One _ -> 1
-  Vec v -> Data.Vector.length v
+  Vec v -> Vector.length v
   Mud s _ _ _ -> s
 {-# inlinable length #-}
 
@@ -276,7 +276,7 @@ head :: DhallList a -> Maybe a
 head = \case
   Empty -> Nothing
   One x -> Just x
-  Vec v -> Just (Data.Vector.unsafeHead v)
+  Vec v -> Just (Vector.unsafeHead v)
   Mud _ x _ _ -> Just x
 {-# inlinable head #-}
 
@@ -284,7 +284,7 @@ last :: DhallList a -> Maybe a
 last = \case
   Empty -> Nothing
   One x -> Just x
-  Vec v -> Just (Data.Vector.unsafeLast v)
+  Vec v -> Just (Vector.unsafeLast v)
   Mud _ _ _ x -> Just x
 {-# inlinable last #-}
 
@@ -292,8 +292,8 @@ uncons :: DhallList a -> Maybe (a, DhallList a)
 uncons = \case
   Empty -> Nothing
   One x -> Just (x, Empty)
-  Vec v -> Just (Data.Vector.unsafeHead v, fromVector (Data.Vector.unsafeTail v))
-  x@(Mud _ h _ _) -> Just (h, Vec (Data.Vector.unsafeTail (toVector x)))
+  Vec v -> Just (Vector.unsafeHead v, fromVector (Vector.unsafeTail v))
+  x@(Mud _ h _ _) -> Just (h, Vec (Vector.unsafeTail (toVector x)))
 {-# inlinable uncons #-}
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
@@ -308,7 +308,7 @@ foldr :: (a -> b -> b) -> b -> DhallList a -> b
 foldr f y = \case
   Empty -> y
   One x -> f x y
-  Vec v -> Data.Vector.foldr f y v
+  Vec v -> Vector.foldr f y v
   Mud _ h xs l -> f h $ ifoldr f (f l y) xs
 {-# inlinable foldr #-}
 
@@ -316,7 +316,7 @@ foldr' :: (a -> b -> b) -> b -> DhallList a -> b
 foldr' f !y = \case
   Empty -> y
   One x -> f x y
-  Vec v -> Data.Vector.foldr' f y v
+  Vec v -> Vector.foldr' f y v
   Mud _ h xs l -> f h $! ifoldr' f (f l y) xs
 {-# inlinable foldr' #-}
 
@@ -324,7 +324,7 @@ foldl' :: (b -> a -> b) -> b -> DhallList a -> b
 foldl' f !y = \case
   Empty -> y
   One x -> f y x
-  Vec v -> Data.Vector.foldl' f y v
+  Vec v -> Vector.foldl' f y v
   Mud _ h xs l -> flip f l $! ifoldl' f (f y h) xs
 {-# inlinable foldl' #-}
 
@@ -333,8 +333,8 @@ map :: (a -> b) -> DhallList a -> DhallList b
 map f = \case
   Empty -> Empty
   One x -> One (f x)
-  Vec v -> Vec (Data.Vector.map f v)
-  x@Mud{} -> Vec (Data.Vector.map f (toVector x))
+  Vec v -> Vec (Vector.map f v)
+  x@Mud{} -> Vec (Vector.map f (toVector x))
 {-# inlinable map #-}
 
 -- | The result is normalized!
@@ -342,8 +342,8 @@ mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
 mapWithIndex f = \case
   Empty -> empty
   One x -> singleton (f 0 x)
-  Vec v -> Vec (Data.Vector.imap f v)
-  x@Mud{} -> Vec (Data.Vector.imap f (toVector x))
+  Vec v -> Vec (Vector.imap f v)
+  x@Mud{} -> Vec (Vector.imap f (toVector x))
 {-# inlinable mapWithIndex #-}
 
 -- TODO: Specialize for Either
@@ -351,8 +351,8 @@ mapM_withIndex :: Monad m => (Int -> a -> m ()) -> DhallList a -> m ()
 mapM_withIndex f = \case
   Empty -> pure ()
   One x -> f 0 x
-  Vec v -> Data.Vector.imapM_ f v
-  x@Mud{} -> Data.Vector.imapM_ f (toVector x) -- TODO: Avoid the allocation?
+  Vec v -> Vector.imapM_ f v
+  x@Mud{} -> Vector.imapM_ f (toVector x) -- TODO: Avoid the allocation?
 {-# inlinable mapM_withIndex #-}
 
 -- | The result is normalized!
@@ -371,15 +371,15 @@ mapM :: Monad m => (a -> m b) -> DhallList a -> m (DhallList b)
 mapM f = \case
   Empty -> pure Empty
   One x -> One <$> f x
-  Vec v -> Vec <$> Data.Vector.mapM f v
-  x@Mud{} -> Vec <$> Data.Vector.mapM f (toVector x)
+  Vec v -> Vec <$> Vector.mapM f v
+  x@Mud{} -> Vec <$> Vector.mapM f (toVector x)
 {-# inlinable mapM #-}
 
 toList :: DhallList a -> [a]
 toList = \case
   Empty -> []
   One a -> [a]
-  Vec v -> Data.Vector.toList v
+  Vec v -> Vector.toList v
   Mud s h xs l -> case s of
     2 -> [h, l]
     _ -> h : DList.apply (itoDList xs) [l]
@@ -387,21 +387,21 @@ toList = \case
 
 toVector :: DhallList a -> Vector a
 toVector = \case
-  Empty -> Data.Vector.empty
-  One a -> Data.Vector.singleton a
+  Empty -> Vector.empty
+  One a -> Vector.singleton a
   Vec v -> v
   Mud s h xs l -> mudToVector s h xs l
 {-# inlinable toVector #-}
 
 mudToVector :: Int -> a -> Inner a -> a -> Vector a
 mudToVector n h xs l
-  | n == 2 = Data.Vector.fromListN 2 [h, l]
-  | otherwise = Data.Vector.create $ do
-      v <- Data.Vector.Mutable.new n -- TODO: Maybe consider using unsafeNew?!
-      Data.Vector.Mutable.unsafeWrite v 0 h
+  | n == 2 = Vector.fromListN 2 [h, l]
+  | otherwise = Vector.create $ do
+      v <- Vector.Mutable.new n -- TODO: Maybe consider using unsafeNew?!
+      Vector.Mutable.unsafeWrite v 0 h
       !ix <- iwrite v 1 xs
       -- assert (ix == n - 1)
-      Data.Vector.Mutable.unsafeWrite v ix l
+      Vector.Mutable.unsafeWrite v ix l
       pure v
 {-# inlinable mudToVector #-}
 
@@ -438,8 +438,8 @@ iglue as b c ds = case as of
 
 icatVecs :: Vector a -> Vector a -> Inner a
 icatVecs xs ys
-  | Data.Vector.null xs = ifromVector ys
-  | Data.Vector.null ys = ifromVector xs
+  | Vector.null xs = ifromVector ys
+  | Vector.null ys = ifromVector xs
   | otherwise = ICat (IVec xs) (IVec ys)
 {-# inlinable icatVecs #-}
 
@@ -452,7 +452,7 @@ ireverse = \case
 
 ifromVector :: Vector a -> Inner a
 ifromVector v
-  | Data.Vector.null v = IEmpty
+  | Vector.null v = IEmpty
   | otherwise = IVec v
 {-# inlinable ifromVector #-}
 
@@ -474,7 +474,7 @@ ifoldMap f = \case
 ifoldr :: (a -> b -> b) -> b -> Inner a -> b
 ifoldr f y = \case
   IEmpty -> y
-  IVec v -> Data.Vector.foldr f y v
+  IVec v -> Vector.foldr f y v
   xs -> DList.foldr f y (itoDList xs)
 {-# inlinable ifoldr #-}
 
@@ -484,7 +484,7 @@ ifoldr' f !y = \case
   IEmpty -> y
   ICons x xs -> f x $! ifoldr' f y xs
   ISnoc xs x -> ifoldr' f (f x y) xs
-  IVec v -> Data.Vector.foldr' f y v
+  IVec v -> Vector.foldr' f y v
   IRev xs -> ifoldl' (flip f) y xs
   ICat xs0 xs1 -> ifoldr' f (ifoldr' f y xs1) xs0
 {-# inlinable ifoldr' #-}
@@ -495,7 +495,7 @@ ifoldl' f !y = \case
   IEmpty -> y
   ICons x xs -> ifoldl' f (f y x) xs
   ISnoc xs x -> flip f x $! ifoldl' f y xs
-  IVec v -> Data.Vector.foldl' f y v
+  IVec v -> Vector.foldl' f y v
   IRev xs -> ifoldr' (flip f) y xs
   ICat xs0 xs1 -> ifoldl' f (ifoldl' f y xs0) xs1
 {-# inlinable ifoldl' #-}
@@ -503,7 +503,7 @@ ifoldl' f !y = \case
 itoList :: Inner a -> [a]
 itoList = \case
   IEmpty -> []
-  IVec v -> Data.Vector.toList v
+  IVec v -> Vector.toList v
   xs -> DList.toList (itoDList xs)
 {-# inlinable itoList #-}
 
@@ -513,12 +513,12 @@ itoDList = \case
   IEmpty -> DList.empty
   ICons x xs -> DList.cons x (itoDList xs)
   ISnoc xs x -> DList.snoc (itoDList xs) x
-  IVec v -> Data.Vector.foldr DList.cons DList.empty v
+  IVec v -> Vector.foldr DList.cons DList.empty v
   IRev xs -> case xs of
     IEmpty -> DList.empty
     ICons x xs' -> DList.snoc (itoDList (IRev xs')) x
     ISnoc xs' x -> DList.cons x (itoDList (IRev xs'))
-    IVec v -> Data.Vector.foldr (flip DList.snoc) DList.empty v
+    IVec v -> Vector.foldr (flip DList.snoc) DList.empty v
     IRev ys -> itoDList ys
     ICat xs0 xs1 -> itoDList (IRev xs1) <> itoDList (IRev xs0)
   ICat xs ys -> itoDList xs <> itoDList ys
@@ -529,30 +529,30 @@ iwrite :: MVector s a -> Int -> Inner a -> ST s Int
 iwrite !mv !ix = \case
   IEmpty -> pure ix
   ICons x ys -> do
-    Data.Vector.Mutable.unsafeWrite mv ix x
+    Vector.Mutable.unsafeWrite mv ix x
     iwrite mv (ix + 1) ys
   ISnoc xs y -> do
     !ix' <- iwrite mv ix xs
-    Data.Vector.Mutable.unsafeWrite mv ix' y
+    Vector.Mutable.unsafeWrite mv ix' y
     pure $! ix' + 1
   IVec v -> do
-    let !n = Data.Vector.length v
-    let slice = Data.Vector.Mutable.unsafeSlice ix n mv
-    Data.Vector.unsafeCopy slice v
+    let !n = Vector.length v
+    let slice = Vector.Mutable.unsafeSlice ix n mv
+    Vector.unsafeCopy slice v
     pure $! ix + n
   IRev xs0 -> case xs0 of
     IEmpty -> pure ix
     ICons x ys -> do
       !ix' <- iwrite mv ix (IRev ys)
-      Data.Vector.Mutable.unsafeWrite mv ix' x
+      Vector.Mutable.unsafeWrite mv ix' x
       pure $! ix' + 1
     ISnoc xs y -> do
-      Data.Vector.Mutable.unsafeWrite mv ix y
+      Vector.Mutable.unsafeWrite mv ix y
       iwrite mv (ix + 1) (IRev xs)
     IVec v -> do
-      let !n = Data.Vector.length v
-      let slice = Data.Vector.Mutable.unsafeSlice ix n mv
-      Data.Vector.unsafeCopy slice (Data.Vector.reverse v)
+      let !n = Vector.length v
+      let slice = Vector.Mutable.unsafeSlice ix n mv
+      Vector.unsafeCopy slice (Vector.reverse v)
       pure $! ix + n
     IRev xs -> iwrite mv ix xs
     ICat xs ys -> do
