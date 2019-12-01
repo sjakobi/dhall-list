@@ -6,6 +6,8 @@
 {-# language LambdaCase #-}
 
 -- {-# OPTIONS_GHC -ddump-simpl -dsuppress-coercions -dsuppress-unfoldings -dsuppress-module-prefixes #-}
+{-# OPTIONS_GHC -O2 #-}
+
 module DhallList.Internal
   ( DhallList(..)
   , empty
