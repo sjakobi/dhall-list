@@ -83,8 +83,17 @@ instance Functor DhallList where
 instance Applicative DhallList where
   pure = singleton
 
-  -- TODO: Optimize?
-  xs <*> ys = fromVector (toVector xs <*> toVector ys)
+  fs0 <*> as0 = case fs0 of
+    Empty -> Empty
+    One f -> map f as0
+    Vec fs -> case as0 of
+      Empty -> Empty
+      One a -> Vec (fmap ($ a) fs)
+      Vec as -> Vec (fs <*> as)
+      as@Mud{} -> Vec (fs <*> toVector as)
+    fs@Mud{} -> case as0 of
+      Empty -> Empty
+      as -> Vec (toVector fs <*> toVector as)
   {-# inline (<*>) #-}
 
 instance Monad DhallList where
