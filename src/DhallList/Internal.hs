@@ -82,9 +82,14 @@ instance Semigroup (DhallList a) where
 instance Monoid (DhallList a) where
   mempty = empty
 
--- TODO: Add (<$)
 instance Functor DhallList where
   fmap = map
+
+  a <$ bs = case length bs of
+    0 -> Empty
+    1 -> One a
+    n -> Vec (Vector.replicate n a)
+  {-# inline (<$) #-}
 
 instance Applicative DhallList where
   pure = singleton
