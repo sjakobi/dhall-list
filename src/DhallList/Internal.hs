@@ -4,6 +4,8 @@
 {-# language DeriveGeneric #-}
 {-# language DeriveLift #-}
 {-# language LambdaCase #-}
+
+-- {-# OPTIONS_GHC -ddump-simpl -dsuppress-coercions -dsuppress-unfoldings -dsuppress-module-prefixes #-}
 module DhallList.Internal
   ( DhallList(..)
   , empty
@@ -29,6 +31,7 @@ module DhallList.Internal
 -- TODO: Use unsafe Vector operations
 -- TODO: Optimize Inner operations based on size of Mud
 -- TODO: Add a mapMWithIndex_ or mapM_withIndex that can be built on top of Data.Vector.imapM_
+-- TODO: Add uncons / tail
 
 import Control.Applicative (Alternative)
 import Control.DeepSeq (NFData)
@@ -253,7 +256,6 @@ toList = \case
   Vec v -> Data.Vector.toList v
   x@Mud{} -> Data.Vector.toList (toVector x)
 
--- TODO: Optimize me
 toVector :: DhallList a -> Vector a
 toVector = \case
   Empty -> Data.Vector.empty
@@ -267,7 +269,7 @@ mudToVector n h xs l
   | otherwise = runST $ do
       v <- Data.Vector.Mutable.new n
       Data.Vector.Mutable.write v 0 h
-      ix <- iwrite v 1 xs
+      !ix <- iwrite v 1 xs
       -- assert (ix == n - 1)
       Data.Vector.Mutable.write v ix l
       Data.Vector.freeze v
@@ -330,6 +332,7 @@ ifoldMap f = \case
 (#.) _f = coerce
 {-# INLINE (#.) #-}
 
+-- TODO: Prevent reboxing the Int somehow!?
 iwrite :: MVector s a -> Int -> Inner a -> ST s Int
 iwrite !mv !ix = \case
   IEmpty -> pure ix
@@ -337,32 +340,32 @@ iwrite !mv !ix = \case
     Data.Vector.Mutable.write mv ix x
     iwrite mv (ix + 1) ys
   ISnoc xs y -> do
-    ix' <- iwrite mv ix xs
+    !ix' <- iwrite mv ix xs
     Data.Vector.Mutable.write mv ix' y
-    pure (ix' + 1)
+    pure $! ix' + 1
   IVec v -> do
-    let n = Data.Vector.length v
+    let !n = Data.Vector.length v
     let slice = Data.Vector.Mutable.slice ix n mv
     Data.Vector.copy slice v
-    pure (ix + n)
+    pure $! ix + n
   IRev xs0 -> case xs0 of
     IEmpty -> pure ix
     ICons x ys -> do
-      ix' <- iwrite mv ix (IRev ys)
+      !ix' <- iwrite mv ix (IRev ys)
       Data.Vector.Mutable.write mv ix' x
-      pure (ix' + 1)
+      pure $! ix' + 1
     ISnoc xs y -> do
       Data.Vector.Mutable.write mv ix y
       iwrite mv (ix + 1) (IRev xs)
     IVec v -> do
-      let n = Data.Vector.length v
+      let !n = Data.Vector.length v
       let slice = Data.Vector.Mutable.slice ix n mv
       Data.Vector.copy slice (Data.Vector.reverse v)
-      pure (ix + n)
+      pure $! ix + n
     IRev xs -> iwrite mv ix xs
     ICat xs ys -> do
-      ix' <- iwrite mv ix (IRev ys)
+      !ix' <- iwrite mv ix (IRev ys)
       iwrite mv ix' (IRev xs)
   ICat xs ys -> do
-    ix' <- iwrite mv ix xs
+    !ix' <- iwrite mv ix xs
     iwrite mv ix' ys
