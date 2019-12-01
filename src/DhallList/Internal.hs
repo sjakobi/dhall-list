@@ -22,6 +22,7 @@ module DhallList.Internal
   , null
   , head
   , last
+  , uncons
   , map
   , mapWithIndex
   , mapM_withIndex
@@ -31,7 +32,6 @@ module DhallList.Internal
 -- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
 -- TODO: Use unsafe Vector operations
 -- TODO: Optimize Inner operations based on size of Mud
--- TODO: Add uncons / tail
 
 import Control.Applicative (Alternative)
 import Control.DeepSeq (NFData)
@@ -214,6 +214,13 @@ last = \case
   One x -> Just x
   Vec v -> Just (Data.Vector.last v)
   Mud _ _ _ x -> Just x
+
+uncons :: DhallList a -> Maybe (a, DhallList a)
+uncons = \case
+  Empty -> Nothing
+  One x -> Just (x, Empty)
+  Vec v -> Just (Data.Vector.head v, Vec (Data.Vector.tail v))
+  x@(Mud _ h _ _) -> Just (h, Vec (Data.Vector.tail (toVector x)))
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
 foldMap f = \case

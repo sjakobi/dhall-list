@@ -14,6 +14,7 @@ module DhallList
   , null
   , head
   , last
+  , uncons
   , map
   , mapWithIndex
   , mapM_withIndex
