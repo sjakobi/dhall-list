@@ -41,6 +41,7 @@ import Control.DeepSeq (NFData)
 import Control.Monad.ST (ST)
 import Data.Coerce (Coercible, coerce)
 import Data.Data (Data)
+import Data.DList (DList)
 import Data.Monoid (Dual(..))
 import Data.Vector (Vector)
 import Data.Vector (MVector)
@@ -50,6 +51,7 @@ import Language.Haskell.TH.Syntax (Lift)
 import Prelude hiding (head, last, length, reverse, null, traverse, map, foldMap, mapM)
 
 import qualified Control.Applicative
+import qualified Data.DList as DList
 import qualified Data.Foldable
 import qualified Data.Traversable
 import qualified Data.Vector
@@ -79,6 +81,7 @@ instance Semigroup (DhallList a) where
 instance Monoid (DhallList a) where
   mempty = empty
 
+-- TODO: Add (<$)
 instance Functor DhallList where
   fmap = map
 
@@ -366,7 +369,9 @@ toList = \case
   Empty -> []
   One a -> [a]
   Vec v -> Data.Vector.toList v
-  x@Mud{} -> foldr (:) [] x
+  Mud s h xs l -> case s of
+    2 -> [h, l]
+    _ -> h : DList.apply (itoDList xs) [l]
 {-# inlinable toList #-}
 
 toVector :: DhallList a -> Vector a
@@ -478,6 +483,21 @@ ifoldl' f !y = \case
   IRev xs -> ifoldr' (flip f) y xs
   ICat xs0 xs1 -> ifoldl' f (ifoldl' f y xs0) xs1
 {-# inlinable ifoldl' #-}
+
+itoDList :: Inner a -> DList a
+itoDList = \case
+  IEmpty -> DList.empty
+  ICons x xs -> DList.cons x (itoDList xs)
+  ISnoc xs x -> DList.snoc (itoDList xs) x
+  IVec v -> Data.Vector.foldr DList.cons DList.empty v
+  IRev xs -> case xs of
+    IEmpty -> DList.empty
+    ICons x xs' -> DList.snoc (itoDList (IRev xs')) x
+    ISnoc xs' x -> DList.cons x (itoDList (IRev xs'))
+    IVec v -> Data.Vector.foldr (flip DList.snoc) DList.empty v
+    IRev ys -> itoDList ys
+    ICat xs0 xs1 -> itoDList (IRev xs1) <> itoDList (IRev xs0)
+  ICat xs ys -> itoDList (xs) <> itoDList ys
 
 -- TODO: Prevent reboxing the Int somehow!?
 iwrite :: MVector s a -> Int -> Inner a -> ST s Int
