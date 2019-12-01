@@ -30,7 +30,6 @@ module DhallList.Internal
   , eqBy
   ) where
 
--- TODO: Try inlinable instead of inline: some inlinings get pretty huge!
 -- TODO: Use unsafe Vector operations
 
 import Control.Applicative (Alternative)
@@ -62,11 +61,13 @@ data DhallList a
   deriving (Show, Data, Generic, NFData, Lift)
 
 instance Eq a => Eq (DhallList a) where
-  xs == ys = eqBy (==)
+  (==) = eqBy (==)
+  {-# inline (==) #-}
 
 instance Ord a => Ord (DhallList a) where
   -- TODO: Optimize
   compare xs ys = compare (toList xs) (toList ys)
+  {-# inline compare #-}
 
 instance Semigroup (DhallList a) where
   (<>) = append
@@ -82,10 +83,12 @@ instance Applicative DhallList where
 
   -- TODO: Optimize?
   xs <*> ys = fromListN (length xs * length ys) (toList xs <*> toList ys)
+  {-# inline (<*>) #-}
 
 instance Monad DhallList where
   -- TODO: Optimize? Use Vector instead of list?
   xs >>= f = fromList (toList xs >>= toList . f)
+  {-# inline (>>=) #-}
 
 instance Alternative DhallList where
   empty = empty
@@ -114,6 +117,7 @@ fromList = \case
   [] -> empty
   [x] -> singleton x
   xs -> Vec (Data.Vector.fromList xs)
+{-# inlinable fromList #-}
 
 -- TODO: I thought this would help vector allocate the right amount of memory,
 -- but maybe it doesn't – I should check…
@@ -121,18 +125,20 @@ fromListN :: Int -> [a] -> DhallList a
 fromListN n xs
   | n <= 0 = empty
   | otherwise = Vec (Data.Vector.fromListN n xs)
+{-# inlinable fromListN #-}
 
 fromVector :: Vector a -> DhallList a
 fromVector v
   | Data.Vector.null v = Empty
   | otherwise = Vec v
+{-# inlinable fromVector #-}
 
 replicateM :: Monad m => Int -> m a -> m (DhallList a)
 replicateM n0 m = case n0 of
   n | n <= 0 -> pure empty
   1 -> singleton <$> m
   n -> Vec <$> Data.Vector.replicateM n m
-{-# inline replicateM #-}
+{-# inlinable replicateM #-}
 
 append :: DhallList a -> DhallList a -> DhallList a
 append x0 = case x0 of
@@ -177,13 +183,14 @@ append x0 = case x0 of
         (ICat (isnoc xs lx) (IVec (Data.Vector.init vy)))
         (Data.Vector.last vy)
     Mud sy hy ys ly -> Mud (sx + sy) hx (iglue xs lx hy ys) ly
-{-# inline append #-}
+{-# inlinable append #-}
 
 -- TODO: Add special cases for Empty, One etc?
 eqBy :: (a -> b -> Bool) -> DhallList a -> DhallList b -> Bool
 eqBy f xs ys =
       length xs /= length ys
   &&  Data.Vector.Generic.eqBy f (toVector xs) (toVector ys)
+{-# inlinable eqBy #-}
 
 reverse :: DhallList a -> DhallList a
 reverse = \case
@@ -198,6 +205,7 @@ reverse = \case
         (ireverse (ifromVector (Data.Vector.init (Data.Vector.tail v))))
         (Data.Vector.head v)
   Mud s h xs l -> Mud s l (ireverse xs) h
+{-# inlinable reverse #-}
 
 length :: DhallList a -> Int
 length = \case
@@ -205,11 +213,13 @@ length = \case
   One _ -> 1
   Vec v -> Data.Vector.length v
   Mud s _ _ _ -> s
+{-# inlinable length #-}
 
 null :: DhallList a -> Bool
 null = \case
   Empty -> True
   _ -> False
+{-# inlinable null #-}
 
 head :: DhallList a -> Maybe a
 head = \case
@@ -217,6 +227,7 @@ head = \case
   One x -> Just x
   Vec v -> Just (Data.Vector.head v)
   Mud _ x _ _ -> Just x
+{-# inlinable head #-}
 
 last :: DhallList a -> Maybe a
 last = \case
@@ -224,6 +235,7 @@ last = \case
   One x -> Just x
   Vec v -> Just (Data.Vector.last v)
   Mud _ _ _ x -> Just x
+{-# inlinable last #-}
 
 uncons :: DhallList a -> Maybe (a, DhallList a)
 uncons = \case
@@ -231,6 +243,7 @@ uncons = \case
   One x -> Just (x, Empty)
   Vec v -> Just (Data.Vector.head v, fromVector (Data.Vector.tail v))
   x@(Mud _ h _ _) -> Just (h, Vec (Data.Vector.tail (toVector x)))
+{-# inlinable uncons #-}
 
 foldMap :: Monoid m => (a -> m) -> DhallList a -> m
 foldMap f = \case
@@ -238,7 +251,7 @@ foldMap f = \case
   One a -> f a
   Vec v -> Data.Foldable.foldMap f v
   Mud _ a xs b -> f a <> ifoldMap f xs <> f b
-{-# inline foldMap #-}
+{-# inlinable foldMap #-}
 
 foldr' :: (a -> b -> b) -> b -> DhallList a -> b
 foldr' f y = \case
@@ -246,6 +259,7 @@ foldr' f y = \case
   One x -> f x y
   Vec v -> Data.Vector.foldr' f y v
   xs@Mud{} -> Data.Vector.foldr' f y (toVector xs) -- TODO: Avoid allocating the vector
+{-# inlinable foldr' #-}
 
 -- | The result is normalized!
 map :: (a -> b) -> DhallList a -> DhallList b
@@ -254,7 +268,7 @@ map f = \case
   One x -> One (f x)
   Vec v -> Vec (Data.Vector.map f v)
   x@Mud{} -> Vec (Data.Vector.map f (toVector x))
-{-# inline map #-}
+{-# inlinable map #-}
 
 -- | The result is normalized!
 mapWithIndex :: (Int -> a -> b) -> DhallList a -> DhallList b
@@ -263,7 +277,7 @@ mapWithIndex f = \case
   One x -> singleton (f 0 x)
   Vec v -> Vec (Data.Vector.imap f v)
   x@Mud{} -> Vec (Data.Vector.imap f (toVector x))
-{-# inline mapWithIndex #-}
+{-# inlinable mapWithIndex #-}
 
 mapM_withIndex :: Monad m => (Int -> a -> m ()) -> DhallList a -> m ()
 mapM_withIndex f = \case
@@ -271,6 +285,7 @@ mapM_withIndex f = \case
   One x -> f 0 x
   Vec v -> Data.Vector.imapM_ f v
   x@Mud{} -> Data.Vector.imapM_ f (toVector x)
+{-# inlinable mapM_withIndex #-}
 
 -- | The result is normalized!
 traverse :: Applicative f => (a -> f b) -> DhallList a -> f (DhallList b)
@@ -279,6 +294,7 @@ traverse f = \case
   One x -> One <$> f x
   Vec v -> Vec <$> Data.Traversable.traverse f v
   x@Mud{} -> Vec <$> Data.Traversable.traverse f (toVector x)
+{-# inlinable traverse #-}
 
 toList :: DhallList a -> [a]
 toList = \case
@@ -286,6 +302,7 @@ toList = \case
   One a -> [a]
   Vec v -> Data.Vector.toList v
   x@Mud{} -> Data.Vector.toList (toVector x)
+{-# inlinable toList #-}
 
 toVector :: DhallList a -> Vector a
 toVector = \case
@@ -293,6 +310,7 @@ toVector = \case
   One a -> Data.Vector.singleton a
   Vec v -> v
   Mud s h xs l -> mudToVector s h xs l
+{-# inlinable toVector #-}
 
 mudToVector :: Int -> a -> Inner a -> a -> Vector a
 mudToVector n h xs l
@@ -304,6 +322,7 @@ mudToVector n h xs l
       -- assert (ix == n - 1)
       Data.Vector.Mutable.write v ix l
       Data.Vector.freeze v
+{-# inlinable mudToVector #-}
 
 -- TODO: Consider having IRev contain a vector, to simplify folds and traversals
 -- Or: Remove IRev, implement ireverse via mutable vector
@@ -319,13 +338,13 @@ data Inner a
 icons :: a -> Inner a -> Inner a
 icons x (IRev y) = IRev (ISnoc y x) -- TODO: Maybe reconsider this optimization
 icons x y = ICons x y
-{-# inline icons #-}
+{-# inlinable icons #-}
 
 isnoc :: Inner a -> a -> Inner a
 isnoc IEmpty y = ICons y IEmpty -- Prefer ICons! Why though?
 isnoc (IRev x) y = IRev (ICons y x) -- TODO: Maybe reconsider this optimization
 isnoc x y = ISnoc x y
-{-# inline isnoc #-}
+{-# inlinable isnoc #-}
 
 -- TODO: Maybe try some balancing, empty-vector elimination etc. if it seems useful
 iglue :: Inner a -> a -> a -> Inner a -> Inner a
@@ -334,24 +353,27 @@ iglue as b c ds = case as of
   _ -> case ds of
     IEmpty -> (as `ISnoc` b) `ISnoc` c
     _ -> as `ICat` (b `ICons` (c `ICons` ds))
-{-# inline iglue #-}
+{-# inlinable iglue #-}
 
 icatVecs :: Vector a -> Vector a -> Inner a
 icatVecs xs ys
   | Data.Vector.null xs = ifromVector ys
   | Data.Vector.null ys = ifromVector xs
   | otherwise = ICat (IVec xs) (IVec ys)
+{-# inlinable icatVecs #-}
 
 ireverse :: Inner a -> Inner a
 ireverse = \case
   IEmpty  -> IEmpty
   IRev xs -> xs
   xs      -> IRev xs
+{-# inlinable ireverse #-}
 
 ifromVector :: Vector a -> Inner a
 ifromVector v
   | Data.Vector.null v = IEmpty
   | otherwise = IVec v
+{-# inlinable ifromVector #-}
 
 ifoldMap :: Monoid m => (a -> m) -> Inner a -> m
 ifoldMap f = \case
@@ -361,7 +383,7 @@ ifoldMap f = \case
   IVec v -> Data.Foldable.foldMap f v
   IRev xs -> getDual (ifoldMap (Dual #. f) xs)
   ICat xs ys -> ifoldMap f xs <> ifoldMap f ys
-{-# inline ifoldMap #-}
+{-# inlinable ifoldMap #-}
 
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
 (#.) _f = coerce
@@ -404,3 +426,4 @@ iwrite !mv !ix = \case
   ICat xs ys -> do
     !ix' <- iwrite mv ix xs
     iwrite mv ix' ys
+{-# inlinable iwrite #-}
