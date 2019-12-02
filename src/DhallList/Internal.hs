@@ -59,6 +59,26 @@ import qualified Data.Vector as Vector
 import qualified Data.Vector.Generic as Vector.Generic
 import qualified Data.Vector.Mutable as Vector.Mutable
 
+
+{- Other ideas:
+
+data Seqtor a
+  = Empty
+  | One a
+  | Vec {-# unpack #-} !(Vector a)
+  | Mud {-# unpack #-} !Int a !(Seqtor a) a
+
+  -- The following may only appear within Mud!
+  | Cons a !(Seqtor a)
+  | Snoc !(Seqtor a) a
+  | Cat !(Seqtor a) !(Seqtor a)
+
+data Easy a
+  = Empty
+  | Vec (Vector a) -- non-empty
+  | DList !Int a (DList a) a
+-}
+
 data DhallList a
   = Empty
   | One a -- Optimization for List/build
